@@ -36,6 +36,11 @@ std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, c
 const CChainParams &Params();
 
 /**
+ * A safe version of Params() that doesn't assert if globalChainParams is not initialized
+ */
+const CChainParams &SafeParams();
+
+/**
  * Sets the params returned by Params() to those for the given chain name.
  * @throws std::runtime_error when the chain is not supported.
  */

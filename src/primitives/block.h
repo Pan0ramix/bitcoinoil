@@ -10,12 +10,11 @@
 #include <serialize.h>
 #include <uint256.h>
 #include <util/time.h>
+#include <auxpow_constants.h>
+#include <auxpow_serialization.h>
 
-// Forward declaration
+// Forward declarations
 class CAuxPow;
-
-// Version bits for AuxPow blocks
-static const int BLOCK_VERSION_AUXPOW = (1 << 8);
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -41,20 +40,6 @@ public:
     CBlockHeader()
     {
         SetNull();
-    }
-
-    SERIALIZE_METHODS(CBlockHeader, obj) 
-    { 
-        READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nBits, obj.nNonce);
-        
-        // auxpow (optional)
-        if (obj.nVersion & BLOCK_VERSION_AUXPOW) {
-            if (ser_action.ForRead()) {
-                obj.auxpow.reset(new CAuxPow());
-            }
-            assert(obj.auxpow != nullptr);
-            READWRITE(*obj.auxpow);
-        }
     }
 
     void SetNull()
@@ -83,15 +68,42 @@ public:
 
     NodeSeconds Time() const
     {
-        return NodeSeconds{std::chrono::seconds{nTime}};
+        NodeSeconds result(std::chrono::seconds{nTime});
+        return result;
     }
 
     int64_t GetBlockTime() const
     {
         return (int64_t)nTime;
     }
+    
+    // Add member functions for serialization
+    template<typename Stream>
+    void Serialize(Stream& s) const {
+        ::Serialize(s, *this);
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s) {
+        ::Unserialize(s, *this);
+    }
+
+    // Get chain ID from version
+    int GetChainID() const
+    {
+        return nVersion >> 16;
+    }
 };
 
+// Now include auxpow.h after CBlockHeader is fully defined
+#include <auxpow.h>
+
+// Serialization forward declarations
+template <typename Stream>
+void Serialize(Stream& s, const CBlockHeader& block);
+
+template <typename Stream>
+void Unserialize(Stream& s, CBlockHeader& block);
 
 class CBlock : public CBlockHeader
 {
@@ -135,6 +147,7 @@ public:
         block.nTime          = nTime;
         block.nBits          = nBits;
         block.nNonce         = nNonce;
+        block.auxpow         = auxpow;
         return block;
     }
 
@@ -171,5 +184,45 @@ struct CBlockLocator
         return vHave.empty();
     }
 };
+
+// Implementation for the forward declared serialization functions
+template<typename Stream>
+void Serialize(Stream& s, const CBlockHeader& block)
+{
+    s << block.nVersion;
+    s << block.hashPrevBlock;
+    s << block.hashMerkleRoot;
+    s << block.nTime;
+    s << block.nBits;
+    s << block.nNonce;
+    
+    // auxpow (optional)
+    if (block.IsAuxPow()) {
+        if (block.auxpow) {
+            s << *block.auxpow;
+        } else {
+            // If no auxpow is present but the block is flagged as auxpow, 
+            // serialize an empty auxpow
+            SerializeEmptyAuxPow(s);
+        }
+    }
+}
+
+template<typename Stream>
+void Unserialize(Stream& s, CBlockHeader& block)
+{
+    s >> block.nVersion;
+    s >> block.hashPrevBlock;
+    s >> block.hashMerkleRoot;
+    s >> block.nTime;
+    s >> block.nBits;
+    s >> block.nNonce;
+    
+    // auxpow (optional)
+    if (block.IsAuxPow()) {
+        block.auxpow = std::make_shared<CAuxPow>();
+        s >> *block.auxpow;
+    }
+}
 
 #endif // BITCOINOIL_PRIMITIVES_BLOCK_H

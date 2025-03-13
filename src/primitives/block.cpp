@@ -8,6 +8,14 @@
 #include <hash.h>
 #include <tinyformat.h>
 #include <auxpow.h>
+#include <auxpow_impl.h>
+#include <streams.h>
+
+// Explicit template instantiations for CBlockHeader serialization
+template void Serialize<CHashWriter>(CHashWriter& s, const CBlockHeader& block);
+
+// Explicit template instantiations for CAuxPow serialization
+template void CAuxPow::Serialize<CHashWriter>(CHashWriter& s) const;
 
 uint256 CBlockHeader::GetHash() const
 {

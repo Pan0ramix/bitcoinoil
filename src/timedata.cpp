@@ -6,6 +6,9 @@
 #include <config/bitcoinoil-config.h>
 #endif
 
+// Define this to prevent duplicate definitions in validation_fix.cpp
+#define BITCOINOIL_TIMEDATA_CPP
+
 #include <timedata.h>
 
 #include <netaddress.h>

@@ -767,6 +767,9 @@ public:
         return m_mempool ? &m_mempool->cs : nullptr;
     }
 
+    /** Most recent headers presync progress update, for rate-limiting. */
+    std::chrono::time_point<std::chrono::steady_clock> m_last_presync_update GUARDED_BY(::cs_main) {};
+
 private:
     bool ActivateBestChainStep(BlockValidationState& state, CBlockIndex* pindexMostWork, const std::shared_ptr<const CBlock>& pblock, bool& fInvalidFound, ConnectTrace& connectTrace) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
     bool ConnectTip(BlockValidationState& state, CBlockIndex* pindexNew, const std::shared_ptr<const CBlock>& pblock, ConnectTrace& connectTrace, DisconnectedBlockTransactions& disconnectpool) EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool->cs);
@@ -922,12 +925,14 @@ private:
     bool AcceptBlockHeader(
         const CBlockHeader& block,
         BlockValidationState& state,
-        CBlockIndex** ppindex,
-        bool min_pow_checked) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+        const CChainParams& chainparams,
+        CBlockIndex** ppindex) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+
     friend Chainstate;
 
-    /** Most recent headers presync progress update, for rate-limiting. */
-    std::chrono::time_point<std::chrono::steady_clock> m_last_presync_update GUARDED_BY(::cs_main) {};
+    bool ContextualCheckBlockHeader(
+        const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& params,
+        const CBlockIndex* pindexPrev, int64_t nAdjustedTime) const EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
     //! Returns nullptr if no snapshot has been loaded.
     const CBlockIndex* GetSnapshotBaseBlock() const EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
@@ -1094,7 +1099,7 @@ public:
      *                               (note: only affects headers acceptance; if
      *                               block header is already present in block
      *                               index then this parameter has no effect)
-     * @param[out]  new_block A boolean which is set to indicate if the block was first received via this call
+     * @param[out] new_block A boolean which is set to indicate if the block was first received via this call
      * @returns     If the block was processed, independently of block validity
      */
     bool ProcessNewBlock(const std::shared_ptr<const CBlock>& block, bool force_processing, bool min_pow_checked, bool* new_block) LOCKS_EXCLUDED(cs_main);
@@ -1163,6 +1168,8 @@ public:
     bool ValidatedSnapshotCleanup() EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
     ~ChainstateManager();
+
+    friend Chainstate;
 };
 
 /** Deployment* info via ChainstateManager */

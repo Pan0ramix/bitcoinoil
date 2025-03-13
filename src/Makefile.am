@@ -24,7 +24,7 @@ check_PROGRAMS =
 TESTS =
 BENCHMARKS =
 
-BITCOINOIL_INCLUDES=-I$(builddir) -I$(srcdir)/$(MINISKETCH_INCLUDE_DIR_INT) -I$(srcdir)/secp256k1/include -I$(srcdir)/$(UNIVALUE_INCLUDE_DIR_INT) $(LEVELDB_CPPFLAGS)
+BITCOINOIL_INCLUDES=-I$(builddir) -I$(srcdir)/$(MINISKETCH_INCLUDE_DIR_INT) -I$(srcdir)/secp256k1/include -I$(srcdir)/$(UNIVALUE_INCLUDE_DIR_INT) $(LEVELDB_CPPFLAGS) -I$(srcdir)/include
 
 LIBBITCOINOIL_NODE=libbitcoinoil_node.a
 LIBBITCOINOIL_COMMON=libbitcoinoil_common.a
@@ -368,6 +368,8 @@ libbitcoinoil_node_a_SOURCES = \
   blockencodings.cpp \
   blockfilter.cpp \
   chain.cpp \
+  chainstate_stubs.cpp \
+  chainstate_init.cpp \
   consensus/tx_verify.cpp \
   dbwrapper.cpp \
   deploymentstatus.cpp \
@@ -443,6 +445,7 @@ libbitcoinoil_node_a_SOURCES = \
   txorphanage.cpp \
   txrequest.cpp \
   validation.cpp \
+  validation_fix.cpp \
   validationinterface.cpp \
   versionbits.cpp \
   $(BITCOINOIL_CORE_H)
@@ -642,6 +645,8 @@ libbitcoinoil_consensus_a_SOURCES = \
 libbitcoinoil_common_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOINOIL_INCLUDES) $(BOOST_CPPFLAGS)
 libbitcoinoil_common_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoinoil_common_a_SOURCES = \
+  auxpow.cpp \
+  auxpow_stub.cpp \
   base58.cpp \
   bech32.cpp \
   chainparams.cpp \
@@ -730,16 +735,6 @@ libbitcoinoil_util_a_SOURCES = \
   util/time.cpp \
   util/tokenpipe.cpp \
   $(BITCOINOIL_CORE_H)
-#
-
-# cli #
-libbitcoinoil_cli_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOINOIL_INCLUDES)
-libbitcoinoil_cli_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-libbitcoinoil_cli_a_SOURCES = \
-  compat/stdin.h \
-  compat/stdin.cpp \
-  rpc/client.cpp \
-  $(BITCOINOIL_CORE_H)
 
 nodist_libbitcoinoil_util_a_SOURCES = $(srcdir)/obj/build.h
 #
@@ -780,8 +775,23 @@ bitcoinoil_node_CXXFLAGS = $(bitcoinoil_bin_cxxflags)
 bitcoinoil_node_LDFLAGS = $(bitcoinoil_bin_ldflags)
 bitcoinoil_node_LDADD = $(LIBBITCOINOIL_NODE) $(bitcoinoil_bin_ldadd) $(LIBBITCOINOIL_IPC) $(LIBMULTIPROCESS_LIBS)
 
+# cli #
+libbitcoinoil_cli_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOINOIL_INCLUDES)
+libbitcoinoil_cli_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+libbitcoinoil_cli_a_SOURCES = \
+  rpc/client.cpp \
+  rpc/client.h \
+  rpc/request.h \
+  rpc/util.cpp \
+  rpc/util.h \
+  bitcoinoil-cli.cpp \
+  cli-utils.cpp
+#
+
 # bitcoinoil-cli binary #
-bitcoinoil_cli_SOURCES = bitcoinoil-cli.cpp
+bitcoinoil_cli_SOURCES = \
+  bitcoinoil-cli.cpp \
+  cli-utils.cpp
 bitcoinoil_cli_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOINOIL_INCLUDES) $(EVENT_CFLAGS)
 bitcoinoil_cli_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 bitcoinoil_cli_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS) $(PTHREAD_FLAGS)
@@ -1035,7 +1045,7 @@ $(top_srcdir)/$(subdir)/config/bitcoinoil-config.h.in:  $(am__configure_deps)
 
 clean-local:
 	-$(MAKE) -C secp256k1 clean
-	-rm -f leveldb/*/*.gcda leveldb/*/*.gcno leveldb/helpers/memenv/*.gcda leveldb/helpers/memenv/*.gcno
+	-rm -f leveldb/*/*.gcda leveldb/*/*.gcno
 	-rm -f config.h
 	-rm -rf test/__pycache__
 
@@ -1061,7 +1071,7 @@ EXTRA_DIST += $(libbitcoinoil_ipc_mpgen_input)
 %.capnp:
 
 # Explicitly list dependencies on generated headers as described in
-# https://www.gnu.org/software/automake/manual/html_node/Built-Sources-Example.html#Recording-Dependencies-manually
+# https://www.gnu.org/software/automake/manual/html_node/Built-Sources-Example.html
 ipc/capnp/libbitcoinoil_ipc_a-protocol.$(OBJEXT): $(libbitcoinoil_ipc_mpgen_input:=.h)
 
 if BUILD_MULTIPROCESS

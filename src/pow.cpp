@@ -10,6 +10,7 @@
 #include <primitives/block.h>
 #include <uint256.h>
 #include <auxpow.h>
+#include <logging.h>
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
@@ -188,21 +189,21 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
 // New function to check AuxPow block
 bool CheckAuxPowProofOfWork(const CBlockHeader& block, const Consensus::Params& params)
 {
-    // If we're not an AuxPow block, use the regular check
+    // Check if this is an AuxPow block
     if (!block.IsAuxPow() || !block.auxpow) {
         return CheckProofOfWork(block.GetHash(), block.nBits, params);
     }
     
-    // Check that the chain ID is correct
-    if (params.nAuxpowChainId < 0) {
-        return error("CheckAuxPowProofOfWork(): AuxPow is not allowed on this chain");
+    // Check the chain ID
+    if (block.GetChainID() != params.nAuxpowChainId) {
+        return error("%s: block does not have our chain ID (%d vs %d)", __func__, block.GetChainID(), params.nAuxpowChainId);
     }
     
-    // Check the auxpow is valid
+    // Check that the aux block is actually an aux block
     if (!block.auxpow->Check(block.GetHash(), params.nAuxpowChainId)) {
-        return error("CheckAuxPowProofOfWork(): AuxPow is not valid");
+        return error("%s: AuxPow is not valid", __func__);
     }
     
-    // Check the proof of work of the parent block
-    return CheckProofOfWork(block.auxpow->parentBlockHeader.GetHash(), block.nBits, params);
+    // Check the proof of work on the parent block
+    return CheckProofOfWork(block.auxpow->GetParentBlockHeader()->GetHash(), block.nBits, params);
 }

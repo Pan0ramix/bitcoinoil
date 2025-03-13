@@ -151,12 +151,26 @@ static bool ProcessNatpmp()
 #ifdef USE_UPNP
 static bool ProcessUpnp()
 {
-    bool ret = false;
+#ifndef ENABLE_UPNP
+    return false;
+#else
+    bool fIsUpnpAvailable = false;
+
+    std::string strMsg;
+    if (!m_upnp_thread.joinable()) {
+        ThreadUpnp();
+        strMsg = "UPnP port mapping thread started.";
+    } else {
+        strMsg = "UPnP port mapping thread already started.";
+    }
+    LogPrintf("%s\n", strMsg);
+
     std::string port = strprintf("%u", GetListenPort());
     const char * multicastif = nullptr;
     const char * minissdpdpath = nullptr;
     struct UPNPDev * devlist = nullptr;
     char lanaddr[64];
+    char wanaddr[64]; // Added for newer miniupnpc API
 
     int error = 0;
     devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0, 0, 2, &error);
@@ -165,7 +179,7 @@ static bool ProcessUpnp()
     struct IGDdatas data;
     int r;
 
-    r = UPNP_GetValidIGD(devlist, &urls, &data, lanaddr, sizeof(lanaddr));
+    r = UPNP_GetValidIGD(devlist, &urls, &data, lanaddr, sizeof(lanaddr), wanaddr, sizeof(wanaddr));
     if (r == 1)
     {
         if (fDiscover) {
@@ -178,7 +192,8 @@ static bool ProcessUpnp()
                     CNetAddr resolved;
                     if (LookupHost(externalIPAddress, resolved, false)) {
                         LogPrintf("UPnP: ExternalIPAddress = %s\n", resolved.ToStringAddr());
-                        AddLocal(resolved, LOCAL_MAPPED);
+                        AddLocal(resolved, LOCAL_UPNP);
+                        fIsUpnpAvailable = true;
                     }
                 } else {
                     LogPrintf("UPnP: GetExternalIPAddress failed.\n");
@@ -207,13 +222,18 @@ static bool ProcessUpnp()
         freeUPNPDevlist(devlist); devlist = nullptr;
         FreeUPNPUrls(&urls);
     } else {
+        LogPrintf("UPnP: GetValidIGD failed.\n");
+    }
+
+    freeUPNPDevlist(devlist);
+
+    if (!fIsUpnpAvailable) {
         LogPrintf("No valid UPnP IGDs found\n");
-        freeUPNPDevlist(devlist); devlist = nullptr;
-        if (r != 0)
-            FreeUPNPUrls(&urls);
+        return false;
     }
 
     return ret;
+#endif // ENABLE_UPNP
 }
 #endif // USE_UPNP
 

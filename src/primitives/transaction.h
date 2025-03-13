@@ -213,9 +213,36 @@ struct CMutableTransaction;
  *   - CScriptWitness scriptWitness; (deserialized into CTxIn)
  * - uint32_t nLockTime
  */
+
+// SFINAE helper to detect if a type has a GetVersion method
+template <typename T>
+class has_get_version
+{
+private:
+    typedef char yes;
+    typedef struct { char array[2]; } no;
+
+    template <typename C> static yes test(decltype(&C::GetVersion));
+    template <typename C> static no test(...);
+
+public:
+    static constexpr bool value = sizeof(test<T>(0)) == sizeof(yes);
+};
+
+// Helper function to get version from a stream if available, otherwise return 0
+template <typename Stream, bool HasGetVersion = has_get_version<Stream>::value>
+struct get_stream_version {
+    static int call(const Stream& s) { return 0; }
+};
+
+template <typename Stream>
+struct get_stream_version<Stream, true> {
+    static int call(const Stream& s) { return s.GetVersion(); }
+};
+
 template<typename Stream, typename TxType>
 inline void UnserializeTransaction(TxType& tx, Stream& s) {
-    const bool fAllowWitness = !(s.GetVersion() & SERIALIZE_TRANSACTION_NO_WITNESS);
+    const bool fAllowWitness = !(get_stream_version<Stream>::call(s) & SERIALIZE_TRANSACTION_NO_WITNESS);
 
     s >> tx.nVersion;
     unsigned char flags = 0;
@@ -254,7 +281,8 @@ inline void UnserializeTransaction(TxType& tx, Stream& s) {
 
 template<typename Stream, typename TxType>
 inline void SerializeTransaction(const TxType& tx, Stream& s) {
-    const bool fAllowWitness = !(s.GetVersion() & SERIALIZE_TRANSACTION_NO_WITNESS);
+    // Use our helper to get the version, which will return 0 if GetVersion is not available
+    const bool fAllowWitness = !(get_stream_version<Stream>::call(s) & SERIALIZE_TRANSACTION_NO_WITNESS);
 
     s << tx.nVersion;
     unsigned char flags = 0;
