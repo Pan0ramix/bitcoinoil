@@ -170,6 +170,10 @@ public:
             .nTxCount = 4791,
             .dTxRate  = 0.00203054592,
         };
+
+        // AuxPow parameters
+        consensus.nAuxpowChainId = 16; // Chain ID for AuxPow
+        consensus.nAuxpowStartHeight = 32000; // Height at which AuxPow becomes active
     }
 };
 
@@ -279,6 +283,10 @@ public:
             .nTxCount = 0,
             .dTxRate  = 0,
         };
+
+        // AuxPow parameters
+        consensus.nAuxpowChainId = 16; // Chain ID for AuxPow
+        consensus.nAuxpowStartHeight = 5000; // Height at which AuxPow becomes active
     }
 };
 
@@ -403,6 +411,10 @@ public:
         fRequireStandard = true;
         m_is_test_chain = true;
         m_is_mockable_chain = false;
+
+        // AuxPow parameters
+        consensus.nAuxpowChainId = 16; // Chain ID for AuxPow
+        consensus.nAuxpowStartHeight = 5000; // Height at which AuxPow becomes active
     }
 };
 
@@ -538,6 +550,10 @@ public:
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
 
         bech32_hrp = "rbtco";
+
+        // AuxPow parameters
+        consensus.nAuxpowChainId = 16; // Chain ID for AuxPow
+        consensus.nAuxpowStartHeight = 5000; // Height at which AuxPow becomes active
     }
 };
 

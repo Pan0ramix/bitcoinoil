@@ -114,6 +114,11 @@ struct Params {
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
+    
+    /** AuxPow parameters */
+    int nAuxpowChainId;  // Chain ID for AuxPow. -1 means AuxPow is disabled
+    int nAuxpowStartHeight; // Height at which AuxPow becomes active
+
     std::chrono::seconds PowTargetSpacing() const
     {
         return std::chrono::seconds{nPowTargetSpacing};

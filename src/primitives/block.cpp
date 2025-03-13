@@ -7,9 +7,18 @@
 
 #include <hash.h>
 #include <tinyformat.h>
+#include <auxpow.h>
 
 uint256 CBlockHeader::GetHash() const
 {
+    // When AuxPow is active and the block has AuxPow data, we need to hash the block
+    // without the AuxPow data to maintain compatibility with merge-mined chains
+    if (IsAuxPow() && auxpow.get()) {
+        // Create a temporary copy of the block header without auxpow to hash
+        CBlockHeader blockHeader = *this;
+        blockHeader.auxpow.reset(); // Clear auxpow data
+        return SerializeHash(blockHeader);
+    }
     return SerializeHash(*this);
 }
 

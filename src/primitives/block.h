@@ -11,6 +11,12 @@
 #include <uint256.h>
 #include <util/time.h>
 
+// Forward declaration
+class CAuxPow;
+
+// Version bits for AuxPow blocks
+static const int BLOCK_VERSION_AUXPOW = (1 << 8);
+
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
  * requirements.  When they solve the proof-of-work, they broadcast the block
@@ -28,13 +34,28 @@ public:
     uint32_t nTime;
     uint32_t nBits;
     uint32_t nNonce;
+    
+    // Memory only
+    mutable std::shared_ptr<CAuxPow> auxpow;
 
     CBlockHeader()
     {
         SetNull();
     }
 
-    SERIALIZE_METHODS(CBlockHeader, obj) { READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nBits, obj.nNonce); }
+    SERIALIZE_METHODS(CBlockHeader, obj) 
+    { 
+        READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nBits, obj.nNonce);
+        
+        // auxpow (optional)
+        if (obj.nVersion & BLOCK_VERSION_AUXPOW) {
+            if (ser_action.ForRead()) {
+                obj.auxpow.reset(new CAuxPow());
+            }
+            assert(obj.auxpow != nullptr);
+            READWRITE(*obj.auxpow);
+        }
+    }
 
     void SetNull()
     {
@@ -44,6 +65,7 @@ public:
         nTime = 0;
         nBits = 0;
         nNonce = 0;
+        auxpow.reset();
     }
 
     bool IsNull() const
@@ -52,6 +74,12 @@ public:
     }
 
     uint256 GetHash() const;
+    
+    // Check if this header has auxpow data
+    bool IsAuxPow() const
+    {
+        return (nVersion & BLOCK_VERSION_AUXPOW) != 0;
+    }
 
     NodeSeconds Time() const
     {

@@ -9,6 +9,7 @@
 #include <chain.h>
 #include <primitives/block.h>
 #include <uint256.h>
+#include <auxpow.h>
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
@@ -182,4 +183,26 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
         return false;
 
     return true;
+}
+
+// New function to check AuxPow block
+bool CheckAuxPowProofOfWork(const CBlockHeader& block, const Consensus::Params& params)
+{
+    // If we're not an AuxPow block, use the regular check
+    if (!block.IsAuxPow() || !block.auxpow) {
+        return CheckProofOfWork(block.GetHash(), block.nBits, params);
+    }
+    
+    // Check that the chain ID is correct
+    if (params.nAuxpowChainId < 0) {
+        return error("CheckAuxPowProofOfWork(): AuxPow is not allowed on this chain");
+    }
+    
+    // Check the auxpow is valid
+    if (!block.auxpow->Check(block.GetHash(), params.nAuxpowChainId)) {
+        return error("CheckAuxPowProofOfWork(): AuxPow is not valid");
+    }
+    
+    // Check the proof of work of the parent block
+    return CheckProofOfWork(block.auxpow->parentBlockHeader.GetHash(), block.nBits, params);
 }
