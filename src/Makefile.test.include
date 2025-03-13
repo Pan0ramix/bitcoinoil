@@ -164,7 +164,8 @@ BITCOINOIL_TESTS =\
   test/validation_tests.cpp \
   test/validationinterface_tests.cpp \
   test/versionbits_tests.cpp \
-  test/xoroshiro128plusplus_tests.cpp
+  test/xoroshiro128plusplus_tests.cpp \
+  chainstate_test_stubs.cpp
 
 if ENABLE_WALLET
 BITCOINOIL_TESTS += \
@@ -207,16 +208,11 @@ BITCOINOIL_TEST_SUITE += \
   wallet/test/init_test_fixture.h
 endif # ENABLE_WALLET
 
-test_test_bitcoinoil_SOURCES = $(BITCOINOIL_TEST_SUITE) $(BITCOINOIL_TESTS) $(JSON_TEST_FILES) $(RAW_TEST_FILES)
-test_test_bitcoinoil_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOINOIL_INCLUDES) $(TESTDEFS) $(BOOST_CPPFLAGS) $(EVENT_CFLAGS)
-test_test_bitcoinoil_LDADD = $(LIBTEST_UTIL)
-if ENABLE_WALLET
-test_test_bitcoinoil_LDADD += $(LIBBITCOINOIL_WALLET)
-test_test_bitcoinoil_CPPFLAGS += $(BDB_CPPFLAGS)
-endif
+test_test_bitcoinoil_SOURCES = $(BITCOINOIL_TEST_SUITE) $(BITCOINOIL_TESTS) $(JSON_TEST_FILES) $(RAW_TEST_FILES) chainstate_test_stubs.cpp
 
-test_test_bitcoinoil_LDADD += $(LIBBITCOINOIL_NODE) $(LIBBITCOINOIL_CLI) $(LIBBITCOINOIL_COMMON) $(LIBBITCOINOIL_UTIL) $(LIBBITCOINOIL_CONSENSUS) $(LIBBITCOINOIL_CRYPTO) $(LIBUNIVALUE) \
-  $(LIBLEVELDB) $(LIBMEMENV) $(LIBSECP256K1) $(EVENT_LIBS) $(EVENT_PTHREADS_LIBS) $(MINISKETCH_LIBS)
+test_test_bitcoinoil_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOINOIL_INCLUDES) $(TESTDEFS) $(BOOST_CPPFLAGS) $(EVENT_CFLAGS)
+test_test_bitcoinoil_LDADD = $(LIBTEST_UTIL) $(LIBBITCOINOIL_NODE) $(LIBBITCOINOIL_WALLET) $(LIBBITCOINOIL_COMMON) $(LIBBITCOINOIL_UTIL) $(LIBBITCOINOIL_CONSENSUS) $(LIBBITCOINOIL_CRYPTO) $(LIBUNIVALUE) \
+  $(LIBLEVELDB) $(LIBMEMENV) $(LIBSECP256K1) $(EVENT_LIBS) $(EVENT_PTHREADS_LIBS) $(MINISKETCH_LIBS) $(BOOST_LIBS) $(BDB_LIBS) $(MINIUPNPC_LIBS) $(NATPMP_LIBS) $(SQLITE_LIBS) $(LIBBITCOINOIL_CLI) $(LIBBITCOINOIL_ZMQ) $(ZLIB_LIBS)
 test_test_bitcoinoil_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
 test_test_bitcoinoil_LDADD += $(BDB_LIBS) $(MINIUPNPC_LIBS) $(NATPMP_LIBS) $(SQLITE_LIBS)
@@ -343,7 +339,8 @@ test_fuzz_fuzz_SOURCES = \
  test/fuzz/txrequest.cpp \
  test/fuzz/utxo_snapshot.cpp \
  test/fuzz/validation_load_mempool.cpp \
- test/fuzz/versionbits.cpp
+ test/fuzz/versionbits.cpp \
+ chainstate_test_stubs.cpp
 endif # ENABLE_FUZZ_BINARY
 
 nodist_test_test_bitcoinoil_SOURCES = $(GENERATED_TEST_FILES)
