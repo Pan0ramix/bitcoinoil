@@ -107,25 +107,7 @@ void ReadRegTestArgs(const ArgsManager& args, CChainParams::RegTestOptions& opti
 static std::unique_ptr<const CChainParams> globalChainParams;
 
 const CChainParams &Params() {
-    fprintf(stderr, "DEBUG: Params() called from %s\n", __builtin_FUNCTION());
-    
-    // Check if globalChainParams is initialized
-    if (!globalChainParams) {
-        fprintf(stderr, "Error: globalChainParams not initialized. Make sure SelectParams() is called before Params().\n");
-        
-        // Print out some info to help diagnose where this is being called from
-        void* callstack[10];
-        int frames = backtrace(callstack, 10);
-        char** strs = backtrace_symbols(callstack, frames);
-        fprintf(stderr, "Call stack:\n");
-        for (int i = 0; i < frames; ++i) {
-            fprintf(stderr, "  %s\n", strs[i]);
-        }
-        free(strs);
-        
-        // Still assert to stop execution, but with a more informative message
-        assert(globalChainParams);
-    }
+    assert(globalChainParams);
     return *globalChainParams;
 }
 

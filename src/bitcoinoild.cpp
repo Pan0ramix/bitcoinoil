@@ -113,29 +113,23 @@ int fork_daemon(bool nochdir, bool noclose, TokenPipeEnd& endpoint)
 
 static bool AppInit(NodeContext& node, int argc, char* argv[])
 {
-    fprintf(stderr, "DEBUG: AppInit called\n");
     bool fRet = false;
 
     util::ThreadSetInternalName("init");
 
     // If Qt is used, parameters/bitcoinoil.conf are parsed in qt/bitcoinoil.cpp's main()
     ArgsManager& args = *Assert(node.args);
-    fprintf(stderr, "DEBUG: Setting up server args\n");
     SetupServerArgs(args);
     std::string error;
     if (!args.ParseParameters(argc, argv, error)) {
         return InitError(Untranslated(strprintf("Error parsing command line arguments: %s", error)));
     }
-    fprintf(stderr, "DEBUG: Args parsed\n");
 
     // Process help and version before taking care about datadir
     if (HelpRequested(args) || args.IsArgSet("-version")) {
-        fprintf(stderr, "DEBUG: Help or version requested\n");
         // Initialize the chain parameters before showing help
         try {
-            fprintf(stderr, "DEBUG: About to call SelectParams with chain: %s\n", args.GetChainName().c_str());
             SelectParams(args.GetChainName());
-            fprintf(stderr, "DEBUG: SelectParams called successfully\n");
         } catch (const std::exception& e) {
             fprintf(stderr, "Error: %s\n", e.what());
             return false;
@@ -282,9 +276,7 @@ MAIN_FUNCTION
                 break;
             }
         }
-        fprintf(stderr, "DEBUG: Early initialization with chain: %s\n", chainName.c_str());
         SelectParams(chainName);
-        fprintf(stderr, "DEBUG: Early initialization successful\n");
     } catch (const std::exception& e) {
         fprintf(stderr, "Error during early initialization: %s\n", e.what());
         // Continue anyway, we'll try again later with proper argument parsing

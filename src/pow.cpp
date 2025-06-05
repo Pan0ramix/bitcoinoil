@@ -214,3 +214,15 @@ bool CheckAuxPowProofOfWork(const CBlockHeader& block, const Consensus::Params& 
     
     return true;
 }
+
+// Height-aware AuxPow validation that should be used during block validation
+bool CheckAuxPowProofOfWorkWithHeight(const CBlockHeader& block, const Consensus::Params& params, int nHeight)
+{
+    // Before AuxPow activation height, use regular PoW validation
+    if (nHeight < params.nAuxpowStartHeight) {
+        return CheckProofOfWork(block.GetHash(), block.nBits, params);
+    }
+    
+    // After activation height, use AuxPow validation
+    return CheckAuxPowProofOfWork(block, params);
+}

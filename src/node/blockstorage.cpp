@@ -755,8 +755,8 @@ bool ReadBlockFromDisk(CBlock& block, const FlatFilePos& pos, const Consensus::P
         return error("%s: Deserialize or I/O error - %s at %s", __func__, e.what(), pos.ToString());
     }
 
-    // Check the header
-    if (!CheckAuxPowProofOfWork(block, consensusParams)) {
+    // Check the header - use regular PoW validation since we don't have height info
+    if (!CheckProofOfWork(block.GetHash(), block.nBits, consensusParams)) {
         return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
     }
 
@@ -779,6 +779,13 @@ bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus
         return error("ReadBlockFromDisk(CBlock&, CBlockIndex*): GetHash() doesn't match index for %s at %s",
                      pindex->ToString(), block_pos.ToString());
     }
+    
+    // Additional height-aware AuxPow validation if we have height info
+    if (!CheckAuxPowProofOfWorkWithHeight(block, consensusParams, pindex->nHeight)) {
+        return error("ReadBlockFromDisk: AuxPow validation failed for block at height %d, hash %s", 
+                     pindex->nHeight, block.GetHash().ToString());
+    }
+    
     return true;
 }
 
