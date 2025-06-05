@@ -236,14 +236,15 @@ bool ChainstateManager::AcceptBlockHeader(
     if (block.IsAuxPow()) {
         if (pindexPrev && (pindexPrev->nHeight + 1 < GetConsensus().nAuxpowStartHeight)) {
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "auxpow-not-yet-active",
-                                strprintf("AuxPow blocks are not allowed before height %d", GetConsensus().nAuxpowStartHeight));
+                                strprintf("AuxPow blocks are not allowed before height %d (current height %d, block version 0x%08x)", 
+                                          GetConsensus().nAuxpowStartHeight, pindexPrev->nHeight + 1, block.nVersion));
         }
         
         // Ensure chain ID matches expected value
         if (block.GetChainID() != GetConsensus().nAuxpowChainId) {
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "wrong-chain-id",
-                                strprintf("Block has wrong chain ID %d (expected %d)", 
-                                          block.GetChainID(), GetConsensus().nAuxpowChainId));
+                                strprintf("Block has wrong chain ID %d (expected %d), block version 0x%08x, block hash %s", 
+                                          block.GetChainID(), GetConsensus().nAuxpowChainId, block.nVersion, block.GetHash().ToString()));
         }
     }
     

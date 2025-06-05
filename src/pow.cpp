@@ -196,14 +196,21 @@ bool CheckAuxPowProofOfWork(const CBlockHeader& block, const Consensus::Params& 
     
     // Check the chain ID
     if (block.GetChainID() != params.nAuxpowChainId) {
-        return error("%s: block does not have our chain ID (%d vs %d)", __func__, block.GetChainID(), params.nAuxpowChainId);
+        return error("%s: block does not have our chain ID (%d vs %d), block version=0x%08x", 
+                     __func__, block.GetChainID(), params.nAuxpowChainId, block.nVersion);
     }
     
     // Check that the aux block is actually an aux block
     if (!block.auxpow->Check(block.GetHash(), params.nAuxpowChainId)) {
-        return error("%s: AuxPow is not valid", __func__);
+        return error("%s: AuxPow validation failed for block %s with chain ID %d", 
+                     __func__, block.GetHash().ToString(), params.nAuxpowChainId);
     }
     
     // Check the proof of work on the parent block
-    return CheckProofOfWork(block.auxpow->GetParentBlockHeader()->GetHash(), block.nBits, params);
+    if (!CheckProofOfWork(block.auxpow->GetParentBlockHeader()->GetHash(), block.nBits, params)) {
+        return error("%s: Parent block %s does not meet proof-of-work requirement (bits=0x%08x)", 
+                     __func__, block.auxpow->GetParentBlockHeader()->GetHash().ToString(), block.nBits);
+    }
+    
+    return true;
 }

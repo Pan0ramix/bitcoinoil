@@ -44,6 +44,23 @@ public:
         return parentBlockHeader.get();
     }
 
+    // Additional getters for RPC inspection
+    const CTransactionRef& GetCoinbaseTx() const {
+        return coinbaseTx;
+    }
+
+    const std::vector<uint256>& GetChainMerkleBranch() const {
+        return vChainMerkleBranch;
+    }
+
+    int GetChainIndex() const {
+        return nChainIndex;
+    }
+
+    const std::vector<uint256>& GetMerkleBranch() const {
+        return vMerkleBranch;
+    }
+
     template<typename Stream>
     void Serialize(Stream& s) const;
 

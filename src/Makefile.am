@@ -435,6 +435,7 @@ libbitcoinoil_node_a_SOURCES = \
   rpc/server_util.cpp \
   rpc/signmessage.cpp \
   rpc/txoutproof.cpp \
+  rpc/auxpow.cpp \
   script/sigcache.cpp \
   shutdown.cpp \
   signet.cpp \

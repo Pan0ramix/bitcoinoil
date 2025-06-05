@@ -91,7 +91,7 @@ public:
     // Get chain ID from version
     int GetChainID() const
     {
-        return nVersion >> 16;
+        return (nVersion & BLOCK_VERSION_CHAIN_ID_MASK) >> BLOCK_VERSION_CHAIN_ID_SHIFT;
     }
 };
 
