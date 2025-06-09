@@ -2951,22 +2951,42 @@ bool Chainstate::LoadGenesisBlock()
 
     const CChainParams& params{m_chainman.GetParams()};
 
-    // Check whether we're already initialized by checking for genesis in m_blockman.m_block_index.
+    // 1. Check whether we're already initialized by checking for genesis in m_blockman.m_block_index.
     // Note that we can't use m_chain here, since it is set based on the coins db, not the block index db.
-    if (m_blockman.m_block_index.count(params.GenesisBlock().GetHash()))
+    if (m_blockman.m_block_index.count(params.GenesisBlock().GetHash())) {
+        LogPrintf("LoadGenesisBlock: Genesis block already exists in block index\n");
         return true;
-
-    try {
-        const CBlock& block = params.GenesisBlock();
-        FlatFilePos blockPos{m_blockman.SaveBlockToDisk(block, 0, m_chain, params, nullptr)};
-        if (blockPos.IsNull())
-            return error("%s: writing genesis block to disk failed", __func__);
-        CBlockIndex* pindex = m_blockman.AddToBlockIndex(block, m_chainman.m_best_header);
-        ReceivedBlockTransactions(block, pindex, blockPos);
-    } catch (const std::runtime_error& e) {
-        return error("%s: failed to write genesis block: %s", __func__, e.what());
     }
 
+    LogPrintf("LoadGenesisBlock: Creating genesis block for first time\n");
+
+    // 2. If NOT exists, create the genesis block from chain parameters and save it
+    const CBlock& block = params.GenesisBlock();
+    LogPrintf("LoadGenesisBlock: Genesis block hash: %s\n", block.GetHash().ToString());
+    
+    LogPrintf("LoadGenesisBlock: About to call SaveBlockToDisk\n");
+    // SaveBlockToDisk expects: (block, height, active_chain, chainparams, dbp)
+    // For genesis block, we need to handle empty chain case
+    FlatFilePos blockPos{m_blockman.SaveBlockToDisk(block, 0, m_chain, params, nullptr)};
+    if (blockPos.IsNull()) {
+        return error("%s: writing genesis block to disk failed", __func__);
+    }
+    LogPrintf("LoadGenesisBlock: Genesis block saved to disk at position %d:%d\n", blockPos.nFile, blockPos.nPos);
+    
+    LogPrintf("LoadGenesisBlock: About to call AddToBlockIndex\n");
+    // AddToBlockIndex expects: (CBlockHeader&, CBlockIndex*&)
+    CBlockIndex* pindex = m_blockman.AddToBlockIndex(static_cast<const CBlockHeader&>(block), m_chainman.m_best_header);
+    if (!pindex) {
+        return error("%s: failed to add genesis block to block index", __func__);
+    }
+    LogPrintf("LoadGenesisBlock: Genesis block added to block index\n");
+    
+    LogPrintf("LoadGenesisBlock: About to call ReceivedBlockTransactions\n");
+    // Initialize the genesis block transactions
+    ReceivedBlockTransactions(block, pindex, blockPos);
+    LogPrintf("LoadGenesisBlock: Genesis block transactions processed\n");
+
+    LogPrintf("LoadGenesisBlock: Successfully created and initialized genesis block\n");
     return true;
 }
 

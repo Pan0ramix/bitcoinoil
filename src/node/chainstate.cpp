@@ -87,19 +87,25 @@ static ChainstateLoadResult CompleteChainstateInitialization(
     }
     LogPrintf("CompleteChainstateInitialization: Genesis block check passed\n");
 
+    LogPrintf("CompleteChainstateInitialization: About to check pruning state\n");
     // Check for changed -prune state.  What we are concerned about is a user who has pruned blocks
     // in the past, but is now trying to run unpruned.
     if (chainman.m_blockman.m_have_pruned && !options.prune) {
+        LogPrintf("CompleteChainstateInitialization: Pruning state check failed\n");
         return {ChainstateLoadStatus::FAILURE, _("You need to rebuild the database using -reindex to go back to unpruned mode.  This will redownload the entire blockchain")};
     }
+    LogPrintf("CompleteChainstateInitialization: Pruning state check passed\n");
 
+    LogPrintf("CompleteChainstateInitialization: About to load genesis block if needed\n");
     // At this point blocktree args are consistent with what's on disk.
     // If we're not mid-reindex (based on disk + args), add a genesis block on disk
     // (otherwise we use the one already on disk).
     // This is called again in ThreadImport after the reindex completes.
     if (!fReindex && !chainman.ActiveChainstate().LoadGenesisBlock()) {
+        LogPrintf("CompleteChainstateInitialization: LoadGenesisBlock failed\n");
         return {ChainstateLoadStatus::FAILURE, _("Error initializing block database")};
     }
+    LogPrintf("CompleteChainstateInitialization: Genesis block loading completed\n");
 
     auto is_coinsview_empty = [&](Chainstate* chainstate) EXCLUSIVE_LOCKS_REQUIRED(::cs_main) {
         return options.reindex || options.reindex_chainstate || chainstate->CoinsTip().GetBestBlock().IsNull();
@@ -117,43 +123,62 @@ static ChainstateLoadResult CompleteChainstateInitialization(
     // At this point we're either in reindex or we've loaded a useful
     // block tree into BlockIndex()!
 
+    LogPrintf("CompleteChainstateInitialization: About to process chainstates\n");
     for (Chainstate* chainstate : chainman.GetAll()) {
         LogPrintf("Initializing chainstate %s\n", chainstate->ToString());
 
+        LogPrintf("CompleteChainstateInitialization: About to call InitCoinsDB\n");
         chainstate->InitCoinsDB(
             /*cache_size_bytes=*/chainman.m_total_coinsdb_cache * init_cache_fraction,
             /*in_memory=*/options.coins_db_in_memory,
             /*should_wipe=*/options.reindex || options.reindex_chainstate);
+        LogPrintf("CompleteChainstateInitialization: InitCoinsDB completed\n");
 
         if (options.coins_error_cb) {
+            LogPrintf("CompleteChainstateInitialization: Setting up coins error callback\n");
             chainstate->CoinsErrorCatcher().AddReadErrCallback(options.coins_error_cb);
         }
 
+        LogPrintf("CompleteChainstateInitialization: About to check if database needs upgrade\n");
         // Refuse to load unsupported database format.
         // This is a no-op if we cleared the coinsviewdb with -reindex or -reindex-chainstate
         if (chainstate->CoinsDB().NeedsUpgrade()) {
+            LogPrintf("CompleteChainstateInitialization: Database needs upgrade - failing\n");
             return {ChainstateLoadStatus::FAILURE_INCOMPATIBLE_DB, _("Unsupported chainstate database format found. "
                                                                      "Please restart with -reindex-chainstate. This will "
                                                                      "rebuild the chainstate database.")};
         }
+        LogPrintf("CompleteChainstateInitialization: Database upgrade check passed\n");
 
+        LogPrintf("CompleteChainstateInitialization: About to call ReplayBlocks\n");
         // ReplayBlocks is a no-op if we cleared the coinsviewdb with -reindex or -reindex-chainstate
         if (!chainstate->ReplayBlocks()) {
+            LogPrintf("CompleteChainstateInitialization: ReplayBlocks failed\n");
             return {ChainstateLoadStatus::FAILURE, _("Unable to replay blocks. You will need to rebuild the database using -reindex-chainstate.")};
         }
+        LogPrintf("CompleteChainstateInitialization: ReplayBlocks completed\n");
 
+        LogPrintf("CompleteChainstateInitialization: About to call InitCoinsCache\n");
         // The on-disk coinsdb is now in a good state, create the cache
         chainstate->InitCoinsCache(chainman.m_total_coinstip_cache * init_cache_fraction);
         assert(chainstate->CanFlushToDisk());
+        LogPrintf("CompleteChainstateInitialization: InitCoinsCache completed\n");
 
+        LogPrintf("CompleteChainstateInitialization: About to check if coinsview is empty\n");
         if (!is_coinsview_empty(chainstate)) {
+            LogPrintf("CompleteChainstateInitialization: Coinsview not empty, loading chain tip\n");
             // LoadChainTip initializes the chain based on CoinsTip()'s best block
             if (!chainstate->LoadChainTip()) {
+                LogPrintf("CompleteChainstateInitialization: LoadChainTip failed\n");
                 return {ChainstateLoadStatus::FAILURE, _("Error initializing block database")};
             }
             assert(chainstate->m_chain.Tip() != nullptr);
+            LogPrintf("CompleteChainstateInitialization: LoadChainTip completed\n");
+        } else {
+            LogPrintf("CompleteChainstateInitialization: Coinsview is empty, skipping LoadChainTip\n");
         }
     }
+    LogPrintf("CompleteChainstateInitialization: All chainstates processed successfully\n");
 
     if (!options.reindex) {
         auto chainstates{chainman.GetAll()};

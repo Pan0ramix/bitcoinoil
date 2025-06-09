@@ -38,6 +38,12 @@ template void CAuxPow::Unserialize<CDataStream>(CDataStream& s);
 template void CAuxPow::Serialize<DataStream>(DataStream& s) const;
 template void CAuxPow::Unserialize<DataStream>(DataStream& s);
 
+// Instantiations needed for block storage
+template void CAuxPow::Serialize<CAutoFile>(CAutoFile& s) const;
+template void CAuxPow::Unserialize<CAutoFile>(CAutoFile& s);
+template void CAuxPow::Serialize<CSizeComputer>(CSizeComputer& s) const;
+template void CAuxPow::Serialize<CVectorWriter>(CVectorWriter& s) const;
+
 // Implementation of CheckMerkleBranch
 uint256 CAuxPow::CheckMerkleBranch(uint256 hash, const std::vector<uint256>& vMerkleBranch, int nIndex) {
     if (nIndex == -1)

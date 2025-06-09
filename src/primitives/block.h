@@ -125,10 +125,18 @@ public:
         *(static_cast<CBlockHeader*>(this)) = header;
     }
 
-    SERIALIZE_METHODS(CBlock, obj)
+    template<typename Stream>
+    void Serialize(Stream& s) const
     {
-        READWRITEAS(CBlockHeader, obj);
-        READWRITE(obj.vtx);
+        ::Serialize(s, static_cast<const CBlockHeader&>(*this));
+        s << vtx;
+    }
+    
+    template<typename Stream>
+    void Unserialize(Stream& s)
+    {
+        ::Unserialize(s, static_cast<CBlockHeader&>(*this));
+        s >> vtx;
     }
 
     void SetNull()

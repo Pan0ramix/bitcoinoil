@@ -623,7 +623,9 @@ bool BlockManager::FindBlockPos(FlatFilePos& pos, unsigned int nAddSize, unsigne
             // when the undo file is keeping up with the block file, we want to flush it explicitly
             // when it is lagging behind (more blocks arrive than are being connected), we let the
             // undo block write case handle it
-            finalize_undo = (m_blockfile_info[nFile].nHeightLast == (unsigned int)active_chain.Tip()->nHeight);
+            // Handle the case where active_chain.Tip() is nullptr (e.g., genesis block creation)
+            const CBlockIndex* tip = active_chain.Tip();
+            finalize_undo = tip ? (m_blockfile_info[nFile].nHeightLast == (unsigned int)tip->nHeight) : false;
             nFile++;
             if (m_blockfile_info.size() <= nFile) {
                 m_blockfile_info.resize(nFile + 1);
@@ -687,24 +689,48 @@ bool BlockManager::FindUndoPos(BlockValidationState& state, int nFile, FlatFileP
 
 static bool WriteBlockToDisk(const CBlock& block, FlatFilePos& pos, const CMessageHeader::MessageStartChars& messageStart)
 {
+    LogPrintf("WriteBlockToDisk: Starting for position %d:%d\n", pos.nFile, pos.nPos);
+    
     // Open history file to append
+    LogPrintf("WriteBlockToDisk: About to call OpenBlockFile\n");
     CAutoFile fileout(OpenBlockFile(pos), SER_DISK, CLIENT_VERSION);
     if (fileout.IsNull()) {
+        LogPrintf("WriteBlockToDisk: OpenBlockFile failed\n");
         return error("WriteBlockToDisk: OpenBlockFile failed");
     }
+    LogPrintf("WriteBlockToDisk: OpenBlockFile succeeded\n");
 
     // Write index header
     unsigned int nSize = GetSerializeSize(block, fileout.GetVersion());
-    fileout << messageStart << nSize;
+    LogPrintf("WriteBlockToDisk: About to write header, block size: %u\n", nSize);
+    
+    try {
+        fileout << messageStart << nSize;
+        LogPrintf("WriteBlockToDisk: Header written successfully\n");
+    } catch (const std::exception& e) {
+        LogPrintf("WriteBlockToDisk: Failed to write header: %s\n", e.what());
+        return error("WriteBlockToDisk: Failed to write header: %s", e.what());
+    }
 
     // Write block
+    LogPrintf("WriteBlockToDisk: About to get file position\n");
     long fileOutPos = ftell(fileout.Get());
     if (fileOutPos < 0) {
+        LogPrintf("WriteBlockToDisk: ftell failed\n");
         return error("WriteBlockToDisk: ftell failed");
     }
     pos.nPos = (unsigned int)fileOutPos;
-    fileout << block;
+    LogPrintf("WriteBlockToDisk: File position: %ld, about to write block\n", fileOutPos);
+    
+    try {
+        fileout << block;
+        LogPrintf("WriteBlockToDisk: Block written successfully\n");
+    } catch (const std::exception& e) {
+        LogPrintf("WriteBlockToDisk: Failed to write block: %s\n", e.what());
+        return error("WriteBlockToDisk: Failed to write block: %s", e.what());
+    }
 
+    LogPrintf("WriteBlockToDisk: Completed successfully\n");
     return true;
 }
 
@@ -826,27 +852,55 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const FlatFilePos& pos, c
 
 FlatFilePos BlockManager::SaveBlockToDisk(const CBlock& block, int nHeight, CChain& active_chain, const CChainParams& chainparams, const FlatFilePos* dbp)
 {
-    unsigned int nBlockSize = ::GetSerializeSize(block, CLIENT_VERSION);
+    LogPrintf("SaveBlockToDisk: Starting for block at height %d\n", nHeight);
+    LogPrintf("SaveBlockToDisk: Block hash: %s\n", block.GetHash().ToString());
+    LogPrintf("SaveBlockToDisk: Block has %zu transactions\n", block.vtx.size());
+    LogPrintf("SaveBlockToDisk: CLIENT_VERSION: %d\n", CLIENT_VERSION);
+    LogPrintf("SaveBlockToDisk: About to call GetSerializeSize\n");
+    
+    unsigned int nBlockSize;
+    try {
+        nBlockSize = ::GetSerializeSize(block, CLIENT_VERSION);
+        LogPrintf("SaveBlockToDisk: GetSerializeSize succeeded, block size: %u\n", nBlockSize);
+    } catch (const std::exception& e) {
+        LogPrintf("SaveBlockToDisk: GetSerializeSize failed: %s\n", e.what());
+        return FlatFilePos();
+    }
+    LogPrintf("SaveBlockToDisk: Block size: %u\n", nBlockSize);
+    
     FlatFilePos blockPos;
     const auto position_known {dbp != nullptr};
     if (position_known) {
         blockPos = *dbp;
+        LogPrintf("SaveBlockToDisk: Using known position %d:%d\n", blockPos.nFile, blockPos.nPos);
     } else {
         // when known, blockPos.nPos points at the offset of the block data in the blk file. that already accounts for
         // the serialization header present in the file (the 4 magic message start bytes + the 4 length bytes = 8 bytes = BLOCK_SERIALIZATION_HEADER_SIZE).
         // we add BLOCK_SERIALIZATION_HEADER_SIZE only for new blocks since they will have the serialization header added when written to disk.
         nBlockSize += static_cast<unsigned int>(BLOCK_SERIALIZATION_HEADER_SIZE);
+        LogPrintf("SaveBlockToDisk: Adjusted block size with header: %u\n", nBlockSize);
     }
+    
+    LogPrintf("SaveBlockToDisk: About to call FindBlockPos\n");
     if (!FindBlockPos(blockPos, nBlockSize, nHeight, active_chain, block.GetBlockTime(), position_known)) {
         error("%s: FindBlockPos failed", __func__);
         return FlatFilePos();
     }
+    LogPrintf("SaveBlockToDisk: FindBlockPos succeeded, position: %d:%d\n", blockPos.nFile, blockPos.nPos);
+    
     if (!position_known) {
+        LogPrintf("SaveBlockToDisk: About to call WriteBlockToDisk\n");
         if (!WriteBlockToDisk(block, blockPos, chainparams.MessageStart())) {
+            LogPrintf("SaveBlockToDisk: WriteBlockToDisk failed - calling AbortNode\n");
             AbortNode("Failed to write block");
             return FlatFilePos();
         }
+        LogPrintf("SaveBlockToDisk: WriteBlockToDisk succeeded\n");
+    } else {
+        LogPrintf("SaveBlockToDisk: Skipping WriteBlockToDisk (position known)\n");
     }
+    
+    LogPrintf("SaveBlockToDisk: Completed successfully, returning position %d:%d\n", blockPos.nFile, blockPos.nPos);
     return blockPos;
 }
 
