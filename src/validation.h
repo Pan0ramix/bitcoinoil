@@ -33,6 +33,7 @@
 #include <util/hasher.h>
 #include <util/translation.h>
 #include <versionbits.h>
+#include <auxpow.h>
 
 #include <atomic>
 #include <map>
@@ -383,7 +384,13 @@ enum DisconnectResult
     DISCONNECT_FAILED   // Something else went wrong.
 };
 
-class ConnectTrace;
+// Forward declaration and implementation of ConnectTrace  
+class ConnectTrace {
+public:
+    std::vector<std::pair<CBlockIndex*, std::shared_ptr<const CBlock>>> blocksConnected;
+    
+    ConnectTrace() = default;
+};
 
 /** @see Chainstate::FlushStateToDisk */
 enum class FlushStateMode {

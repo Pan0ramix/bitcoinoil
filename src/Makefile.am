@@ -368,8 +368,6 @@ libbitcoinoil_node_a_SOURCES = \
   blockencodings.cpp \
   blockfilter.cpp \
   chain.cpp \
-  chainstate_stubs.cpp \
-  chainstate_init.cpp \
   consensus/tx_verify.cpp \
   dbwrapper.cpp \
   deploymentstatus.cpp \
@@ -446,8 +444,7 @@ libbitcoinoil_node_a_SOURCES = \
   txorphanage.cpp \
   txrequest.cpp \
   validation.cpp \
-  validation_fix.cpp \
-  validationinterface.cpp \
+validationinterface.cpp \
   versionbits.cpp \
   $(BITCOINOIL_CORE_H)
 

@@ -36,16 +36,23 @@ static ChainstateLoadResult CompleteChainstateInitialization(
     const CacheSizes& cache_sizes,
     const ChainstateLoadOptions& options) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
 {
+    LogPrintf("CompleteChainstateInitialization: Starting...\n");
+    
     auto& pblocktree{chainman.m_blockman.m_block_tree_db};
+    LogPrintf("CompleteChainstateInitialization: Got pblocktree reference\n");
+    
     // new CBlockTreeDB tries to delete the existing file, which
     // fails if it's still open from the previous loop. Close it first:
     pblocktree.reset();
+    LogPrintf("CompleteChainstateInitialization: Reset pblocktree\n");
+    
     pblocktree = std::make_unique<CBlockTreeDB>(DBParams{
         .path = chainman.m_options.datadir / "blocks" / "index",
         .cache_bytes = static_cast<size_t>(cache_sizes.block_tree_db),
         .memory_only = options.block_tree_db_in_memory,
         .wipe_data = options.reindex,
         .options = chainman.m_options.block_tree_db});
+    LogPrintf("CompleteChainstateInitialization: Created new CBlockTreeDB\n");
 
     if (options.reindex) {
         pblocktree->WriteReindexing(true);
@@ -54,24 +61,31 @@ static ChainstateLoadResult CompleteChainstateInitialization(
             CleanupBlockRevFiles();
         }
     }
+    LogPrintf("CompleteChainstateInitialization: Reindex handling completed\n");
 
     if (options.check_interrupt && options.check_interrupt()) return {ChainstateLoadStatus::INTERRUPTED, {}};
 
+    LogPrintf("CompleteChainstateInitialization: About to call LoadBlockIndex\n");
     // LoadBlockIndex will load m_have_pruned if we've ever removed a
     // block file from disk.
     // Note that it also sets fReindex global based on the disk flag!
     // From here on, fReindex and options.reindex values may be different!
     if (!chainman.LoadBlockIndex()) {
+        LogPrintf("CompleteChainstateInitialization: LoadBlockIndex failed\n");
         if (options.check_interrupt && options.check_interrupt()) return {ChainstateLoadStatus::INTERRUPTED, {}};
         return {ChainstateLoadStatus::FAILURE, _("Error loading block database")};
     }
+    LogPrintf("CompleteChainstateInitialization: LoadBlockIndex succeeded\n");
 
+    LogPrintf("CompleteChainstateInitialization: About to check BlockIndex().empty()\n");
     if (!chainman.BlockIndex().empty() &&
             !chainman.m_blockman.LookupBlockIndex(chainman.GetConsensus().hashGenesisBlock)) {
+        LogPrintf("CompleteChainstateInitialization: Genesis block check failed\n");
         // If the loaded chain has a wrong genesis, bail out immediately
         // (we're likely using a testnet datadir, or the other way around).
         return {ChainstateLoadStatus::FAILURE_INCOMPATIBLE_DB, _("Incorrect or no genesis block found. Wrong datadir for network?")};
     }
+    LogPrintf("CompleteChainstateInitialization: Genesis block check passed\n");
 
     // Check for changed -prune state.  What we are concerned about is a user who has pruned blocks
     // in the past, but is now trying to run unpruned.
@@ -161,14 +175,22 @@ static ChainstateLoadResult CompleteChainstateInitialization(
 ChainstateLoadResult LoadChainstate(ChainstateManager& chainman, const CacheSizes& cache_sizes,
                                     const ChainstateLoadOptions& options)
 {
-    if (!chainman.AssumedValidBlock().IsNull()) {
-        LogPrintf("Assuming ancestors of block %s have valid signatures.\n", chainman.AssumedValidBlock().GetHex());
+    LogPrintf("LoadChainstate: Starting...\n");
+    
+    // Safely handle the optional assumed_valid_block
+    if (chainman.m_options.assumed_valid_block.has_value() && !chainman.m_options.assumed_valid_block->IsNull()) {
+        LogPrintf("Assuming ancestors of block %s have valid signatures.\n", chainman.m_options.assumed_valid_block->GetHex());
     } else {
         LogPrintf("Validating signatures for all blocks.\n");
     }
-    LogPrintf("Setting nMinimumChainWork=%s\n", chainman.MinimumChainWork().GetHex());
-    if (chainman.MinimumChainWork() < UintToArith256(chainman.GetConsensus().nMinimumChainWork)) {
-        LogPrintf("Warning: nMinimumChainWork set below default value of %s\n", chainman.GetConsensus().nMinimumChainWork.GetHex());
+    // Safely handle the optional minimum_chain_work
+    if (chainman.m_options.minimum_chain_work.has_value()) {
+        LogPrintf("Setting nMinimumChainWork=%s\n", chainman.m_options.minimum_chain_work->GetHex());
+        if (*chainman.m_options.minimum_chain_work < UintToArith256(chainman.GetConsensus().nMinimumChainWork)) {
+            LogPrintf("Warning: nMinimumChainWork set below default value of %s\n", chainman.GetConsensus().nMinimumChainWork.GetHex());
+        }
+    } else {
+        LogPrintf("Using default nMinimumChainWork=%s\n", chainman.GetConsensus().nMinimumChainWork.GetHex());
     }
     if (chainman.m_blockman.GetPruneTarget() == BlockManager::PRUNE_TARGET_MANUAL) {
         LogPrintf("Block pruning enabled.  Use RPC call pruneblockchain(height) to manually prune block and undo files.\n");
@@ -176,22 +198,33 @@ ChainstateLoadResult LoadChainstate(ChainstateManager& chainman, const CacheSize
         LogPrintf("Prune configured to target %u MiB on disk for block and undo files.\n", chainman.m_blockman.GetPruneTarget() / 1024 / 1024);
     }
 
+    LogPrintf("LoadChainstate: About to acquire cs_main lock...\n");
     LOCK(cs_main);
+    LogPrintf("LoadChainstate: cs_main lock acquired successfully\n");
 
     chainman.m_total_coinstip_cache = cache_sizes.coins;
     chainman.m_total_coinsdb_cache = cache_sizes.coins_db;
 
+    LogPrintf("LoadChainstate: About to InitializeChainstate...\n");
     // Load the fully validated chainstate.
     chainman.InitializeChainstate(options.mempool);
+    LogPrintf("LoadChainstate: InitializeChainstate completed\n");
 
+    LogPrintf("LoadChainstate: About to DetectSnapshotChainstate...\n");
     // Load a chain created from a UTXO snapshot, if any exist.
     chainman.DetectSnapshotChainstate(options.mempool);
+    LogPrintf("LoadChainstate: DetectSnapshotChainstate completed\n");
 
+    LogPrintf("LoadChainstate: About to call CompleteChainstateInitialization...\n");
     auto [init_status, init_error] = CompleteChainstateInitialization(chainman, cache_sizes, options);
+    LogPrintf("LoadChainstate: CompleteChainstateInitialization returned with status: %d\n", (int)init_status);
+    
     if (init_status != ChainstateLoadStatus::SUCCESS) {
+        LogPrintf("LoadChainstate: Failed with error: %s\n", init_error.original);
         return {init_status, init_error};
     }
 
+    LogPrintf("LoadChainstate: About to check MaybeCompleteSnapshotValidation...\n");
     // If a snapshot chainstate was fully validated by a background chainstate during
     // the last run, detect it here and clean up the now-unneeded background
     // chainstate.
@@ -201,6 +234,7 @@ ChainstateLoadResult LoadChainstate(ChainstateManager& chainman, const CacheSize
     // filesystem operations to move leveldb data directories around, and that seems
     // too risky to do in the middle of normal runtime.
     auto snapshot_completion = chainman.MaybeCompleteSnapshotValidation();
+    LogPrintf("LoadChainstate: MaybeCompleteSnapshotValidation completed\n");
 
     if (snapshot_completion == SnapshotCompletionResult::SKIPPED) {
         // do nothing; expected case

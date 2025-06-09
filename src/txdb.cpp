@@ -294,11 +294,16 @@ bool CBlockTreeDB::ReadFlag(const std::string &name, bool &fValue) {
 bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex)
 {
     AssertLockHeld(::cs_main);
+    LogPrintf("LoadBlockIndexGuts: Starting block index loading\n");
+    
     std::unique_ptr<CDBIterator> pcursor(NewIterator());
     pcursor->Seek(std::make_pair(DB_BLOCK_INDEX, uint256()));
+    
+    LogPrintf("LoadBlockIndexGuts: Created iterator, cursor valid: %s\n", pcursor->Valid() ? "true" : "false");
 
     // Load m_block_index
     while (pcursor->Valid()) {
+        LogPrintf("LoadBlockIndexGuts: Processing block index entry\n");
         if (ShutdownRequested()) return false;
         std::pair<uint8_t, uint256> key;
         if (pcursor->GetKey(key) && key.first == DB_BLOCK_INDEX) {
@@ -328,7 +333,8 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
                 header.nBits = pindexNew->nBits;
                 header.nNonce = pindexNew->nNonce;
 
-                if (!CheckAuxPowProofOfWork(header, consensusParams)) {
+                // Use height-aware AuxPow validation
+                if (!CheckAuxPowProofOfWorkWithHeight(header, consensusParams, pindexNew->nHeight)) {
                     return error("%s: CheckProofOfWork failed: %s", __func__, pindexNew->ToString());
                 }
 
@@ -341,5 +347,6 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
         }
     }
 
+    LogPrintf("LoadBlockIndexGuts: Completed successfully\n");
     return true;
 }
