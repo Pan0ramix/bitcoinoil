@@ -150,3 +150,18 @@ dist/
 /guix-build-*
 
 /ci/scratch/
+
+# BitcoinOil Test Debris - Do not commit
+*_test/
+*test_*/
+test_*/
+*_regtest/
+regtest_data*/
+auth_test*/
+debug_test*/
+production_test_*/
+test_datadir/
+*/regtest/blocks/
+*/regtest/chainstate/
+*/regtest/wallets/
+debug_manual/

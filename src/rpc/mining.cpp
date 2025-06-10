@@ -120,14 +120,30 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
+    LogPrintf("GenerateBlock: Starting mining with max_tries=%d, nBits=0x%08x\n", max_tries, block.nBits);
+    LogPrintf("GenerateBlock: Block version=0x%08x, IsAuxPow=%s\n", block.nVersion, block.IsAuxPow() ? "true" : "false");
+    
+    uint64_t initial_tries = max_tries;
     while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckAuxPowProofOfWork(block, chainman.GetConsensus()) && !ShutdownRequested()) {
         ++block.nNonce;
         --max_tries;
+        
+        // Add debug output every 100000 iterations to detect infinite loops
+        if ((initial_tries - max_tries) % 100000 == 0) {
+            LogPrintf("GenerateBlock: Mining attempt %d, nNonce=%u, hash=%s\n", 
+                     initial_tries - max_tries, block.nNonce, block.GetHash().ToString());
     }
+    }
+    
+    LogPrintf("GenerateBlock: Mining finished. max_tries=%d, nNonce=%u, shutdown=%s\n", 
+             max_tries, block.nNonce, ShutdownRequested() ? "true" : "false");
+             
     if (max_tries == 0 || ShutdownRequested()) {
+        LogPrintf("GenerateBlock: Failed - max_tries exhausted or shutdown requested\n");
         return false;
     }
     if (block.nNonce == std::numeric_limits<uint32_t>::max()) {
+        LogPrintf("GenerateBlock: Reached max nonce, trying again with new timestamp\n");
         return true;
     }
 
@@ -135,6 +151,7 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
 
     if (!process_new_block) return true;
 
+    LogPrintf("GenerateBlock: Processing block with hash %s\n", block_out->GetHash().ToString());
     if (!chainman.ProcessNewBlock(block_out, /*force_processing=*/true, /*min_pow_checked=*/true, nullptr)) {
         throw JSONRPCError(RPC_INTERNAL_ERROR, "ProcessNewBlock, block not accepted");
     }

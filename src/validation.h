@@ -384,12 +384,45 @@ enum DisconnectResult
     DISCONNECT_FAILED   // Something else went wrong.
 };
 
-// Forward declaration and implementation of ConnectTrace  
+struct PerBlockConnectTrace {
+    CBlockIndex* pindex = nullptr;
+    std::shared_ptr<const CBlock> pblock;
+    PerBlockConnectTrace() = default;
+};
+
+/**
+ * Used to track blocks whose transactions were applied to the UTXO state as a
+ * part of a single ActivateBestChainStep call.
+ *
+ * This class is single-use, once you call GetBlocksConnected() you have to throw
+ * it away and make a new one.
+ */
 class ConnectTrace {
+private:
+    std::vector<PerBlockConnectTrace> blocksConnected;
+
 public:
-    std::vector<std::pair<CBlockIndex*, std::shared_ptr<const CBlock>>> blocksConnected;
-    
-    ConnectTrace() = default;
+    explicit ConnectTrace() : blocksConnected(1) {}
+
+    void BlockConnected(CBlockIndex* pindex, std::shared_ptr<const CBlock> pblock) {
+        assert(!blocksConnected.back().pindex);
+        assert(pindex);
+        assert(pblock);
+        blocksConnected.back().pindex = pindex;
+        blocksConnected.back().pblock = std::move(pblock);
+        blocksConnected.emplace_back();
+    }
+
+    std::vector<PerBlockConnectTrace>& GetBlocksConnected() {
+        // We always keep one extra block at the end of our list because
+        // blocks are added after all the conflicted transactions have
+        // been filled in. Thus, the last entry should always be an empty
+        // one waiting for the transactions from the next block. We pop
+        // the last entry here to make sure the list we return is sane.
+        assert(!blocksConnected.back().pindex);
+        blocksConnected.pop_back();
+        return blocksConnected;
+    }
 };
 
 /** @see Chainstate::FlushStateToDisk */
@@ -933,7 +966,8 @@ private:
         const CBlockHeader& block,
         BlockValidationState& state,
         const CChainParams& chainparams,
-        CBlockIndex** ppindex) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+        CBlockIndex** ppindex,
+        bool min_pow_checked = false) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
     friend Chainstate;
 
@@ -964,9 +998,17 @@ public:
 
     const CChainParams& GetParams() const { return m_options.chainparams; }
     const Consensus::Params& GetConsensus() const { return m_options.chainparams.GetConsensus(); }
-    bool ShouldCheckBlockIndex() const { return *Assert(m_options.check_block_index); }
-    const arith_uint256& MinimumChainWork() const { return *Assert(m_options.minimum_chain_work); }
-    const uint256& AssumedValidBlock() const { return *Assert(m_options.assumed_valid_block); }
+    bool ShouldCheckBlockIndex() const { 
+        return m_options.check_block_index ? *m_options.check_block_index : false; 
+    }
+    const arith_uint256& MinimumChainWork() const { 
+        static const arith_uint256 zero_work{0};
+        return m_options.minimum_chain_work ? *m_options.minimum_chain_work : zero_work; 
+    }
+    const uint256& AssumedValidBlock() const { 
+        static const uint256 null_hash{}; 
+        return m_options.assumed_valid_block ? *m_options.assumed_valid_block : null_hash; 
+    }
 
     /**
      * Alias for ::cs_main.
@@ -1018,6 +1060,9 @@ public:
     //! The total number of bytes available for us to use across all leveldb
     //! coins databases. This will be split somehow across chainstates.
     int64_t m_total_coinsdb_cache{0};
+
+    //! Pool of chainstates managed by this ChainstateManager
+    std::list<Chainstate> m_chainstate_pool;
 
     //! Instantiate a new chainstate.
     //!

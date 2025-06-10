@@ -1677,6 +1677,23 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         // ThreadImport getting started, so instead we just wait on a timer to
         // check ShutdownRequested() regularly.
         while (!fHaveGenesis && !ShutdownRequested()) {
+            // Also check if genesis block exists and loadblk thread has finished
+            bool genesis_exists = false;
+            bool loadblk_finished = false;
+            {
+                LOCK(chainman.GetMutex());
+                const uint256& genesis_hash = chainman.GetParams().GetConsensus().hashGenesisBlock;
+                genesis_exists = chainman.m_blockman.LookupBlockIndex(genesis_hash) != nullptr;
+                loadblk_finished = !chainman.m_load_block.joinable() || 
+                    (chainman.m_load_block.get_id() == std::thread::id{});
+            }
+            
+            if (genesis_exists && loadblk_finished) {
+                LogPrintf("Genesis block exists and loadblk thread finished, continuing...\n");
+                fHaveGenesis = true;
+                break;
+            }
+            
             g_genesis_wait_cv.wait_for(lock, std::chrono::milliseconds(500));
         }
         block_notify_genesis_wait_connection.disconnect();

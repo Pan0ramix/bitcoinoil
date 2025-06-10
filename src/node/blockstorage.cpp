@@ -21,6 +21,7 @@
 #include <util/syscall_sandbox.h>
 #include <util/system.h>
 #include <validation.h>
+#include <validationinterface.h>
 
 #include <map>
 #include <unordered_map>
@@ -971,6 +972,52 @@ void ThreadImport(ChainstateManager& chainman, std::vector<fs::path> vImportFile
                 }
             } else {
                 LogPrintf("Warning: Could not open blocks file %s\n", fs::PathToString(path));
+            }
+        }
+
+        // Ensure genesis block is activated if we have it but no active chain tip
+        {
+            bool need_chain_tip_load = false;
+            {
+                LOCK(cs_main);
+                if (chainman.ActiveChain().Tip() == nullptr) {
+                    const uint256& genesis_hash = chainman.GetParams().GetConsensus().hashGenesisBlock;
+                    CBlockIndex* genesis_index = chainman.m_blockman.LookupBlockIndex(genesis_hash);
+                    if (genesis_index && !chainman.ActiveChainstate().CoinsTip().GetBestBlock().IsNull()) {
+                        LogPrintf("ThreadImport: Genesis block exists and coins database is initialized, need to load chain tip\n");
+                        need_chain_tip_load = true;
+                    } else if (genesis_index) {
+                        LogPrintf("ThreadImport: Genesis block exists but coins database not initialized\n");
+                    } else {
+                        LogPrintf("ThreadImport: No genesis block found in block index\n");
+                    }
+                } else {
+                    LogPrintf("ThreadImport: Active chain already has tip, no action needed\n");
+                }
+            }
+            
+            if (need_chain_tip_load) {
+                LogPrintf("ThreadImport: Loading chain tip for proper genesis activation\n");
+                {
+                    LOCK(cs_main);
+                    if (!chainman.ActiveChainstate().LoadChainTip()) {
+                        LogPrintf("ThreadImport: LoadChainTip failed\n");
+                        StartShutdown();
+                        return;
+                    }
+                    LogPrintf("ThreadImport: LoadChainTip completed successfully\n");
+                    
+                    // Verify chain tip is now set
+                    const CBlockIndex* tip = chainman.ActiveChain().Tip();
+                    if (tip && tip->GetBlockHash() == chainman.GetParams().GetConsensus().hashGenesisBlock) {
+                        LogPrintf("ThreadImport: Genesis block is now active chain tip\n");
+                        // Trigger notification for genesis activation
+                        GetMainSignals().UpdatedBlockTip(tip, nullptr, false);
+                    } else {
+                        LogPrintf("ThreadImport: Warning - Expected genesis tip but got %s\n", 
+                                tip ? tip->GetBlockHash().ToString() : "null");
+                    }
+                }
             }
         }
 
