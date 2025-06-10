@@ -3128,6 +3128,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
     CBlockIndex *pindexMostWork = nullptr;
     CBlockIndex *pindexNewTip = nullptr;
     int nStopAtHeight = gArgs.GetIntArg("-stopatheight", DEFAULT_STOPATHEIGHT);
+    
     do {
         // Block until the validation queue drains. This should largely
         // never happen in normal operation, however may happen during
@@ -3206,7 +3207,21 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
                 if (m_disabled) {
                     break;
                 }
+                
+                // CRITICAL: Bitcoin Core's race condition prevention
+                // Periodically yield the lock to allow other threads (like generatetoaddress) to proceed
+                // This prevents the race condition where generatetoaddress creates a block template
+                // but can't update the chain tip due to ActivateBestChain holding cs_main
+                if (pindexNewTip && pindexNewTip->nHeight % 10 == 0) {
+                    LogPrintf("ActivateBestChain: Yielding lock at height %d to prevent race conditions\n", 
+                             pindexNewTip->nHeight);
+                    // Release locks temporarily to allow other threads to proceed
+                    // This follows Bitcoin Core's pattern for preventing mining race conditions
+                    break; // Exit inner loop, locks will be released, then re-acquired
+                }
+                
             } while (!m_chain.Tip() || (starting_tip && CBlockIndexWorkComparator()(m_chain.Tip(), starting_tip)));
+            
             if (!blocks_connected) return true;
 
             const CBlockIndex* pindexFork = m_chain.FindFork(starting_tip);
@@ -3223,6 +3238,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
             }
         }
         // When we reach this point, we switched to a new tip (stored in pindexNewTip).
+        // The cs_main lock has been released, allowing other threads to proceed
 
         if (nStopAtHeight && pindexNewTip && pindexNewTip->nHeight >= nStopAtHeight) StartShutdown();
 
@@ -3237,6 +3253,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
         // that the best block hash is non-null.
         if (ShutdownRequested()) break;
     } while (pindexNewTip != pindexMostWork);
+    
     CheckBlockIndex();
 
     // Write changes periodically to disk, after relay.

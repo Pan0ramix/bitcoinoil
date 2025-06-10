@@ -173,7 +173,7 @@ public:
 
         // AuxPow parameters
         consensus.nAuxpowChainId = 16; // Chain ID for AuxPow
-        consensus.nAuxpowStartHeight = 32000; // Height at which AuxPow becomes active
+        consensus.nAuxpowStartHeight = 55000; // Height at which AuxPow becomes active
     }
 };
 
