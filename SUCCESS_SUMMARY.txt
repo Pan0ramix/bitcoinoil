@@ -1,1 +1,0 @@
-LoadBlockIndex issue completely resolved! All assertion failures fixed and daemon working properly.
