@@ -9,9 +9,9 @@
 #include <optional>
 #include <string>
 
-static const int DEFAULT_HTTP_THREADS=4;
-static const int DEFAULT_HTTP_WORKQUEUE=16;
-static const int DEFAULT_HTTP_SERVER_TIMEOUT=30;
+static const int DEFAULT_HTTP_THREADS=20;
+static const int DEFAULT_HTTP_WORKQUEUE=256;
+static const int DEFAULT_HTTP_SERVER_TIMEOUT=180;
 
 struct evhttp_request;
 struct event_base;
