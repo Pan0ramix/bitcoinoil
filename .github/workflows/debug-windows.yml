@@ -24,21 +24,31 @@ jobs:
           repository: escapeneo/bitcoinoil
           run-id: 41448768863
           github-token: ${{ github.token }}
-      - name: Repeat suspect suites
+      - name: Postmortem cdb
         continue-on-error: true
         shell: pwsh
         run: |
           $cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
           New-Item -ItemType Directory -Force C:/unitlogs | Out-Null
-          foreach ($suite in 'wallet_tests','validation_chainstatemanager_tests') {
-            $fails = 0
-            foreach ($i in 1..15) { & ./windows-bin/test_bitcoinoil.exe --run_test=$suite --report_level=no --log_level=nothing; if ($LASTEXITCODE -ne 0) { $fails++; "plain $suite run $i exit=$LASTEXITCODE" } }
-            "plain $suite failures=$fails/15"
-            foreach ($i in 1..15) {
-              $out = & $cdb -g -G -o -c 'sxe -c "r;u @rip L6;k 60;~*k 30;lm m test_*;q" dz; sxe -c "r;u @rip L6;k 60;lm m test_*;q" av; g' ./windows-bin/test_bitcoinoil.exe --run_test=$suite --report_level=no --log_level=nothing 2>&1
-              if ($out -match 'divide|Access violation') { "cdb $suite run $i caught:"; $out | Select-String -Pattern 'ModLoad|NatVis|^\s*$|Unknown exception' -NotMatch | Select-Object -Last 150; break }
-            }
-            "cdb $suite done"
+          foreach ($k in 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug','HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting') { New-Item -Force $k -ErrorAction SilentlyContinue | Out-Null }
+          Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug' -Name Debugger -Value "`"$cdb`" -p %ld -e %ld -g -c `".ecxr;r;u @rip L6;k 80;~*k 40;lm;.dump /ma C:\unitlogs\crash.dmp;q`" -logo C:\unitlogs\postmortem.log"
+          Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug' -Name Auto -Value '1'
+          Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -Name Disabled -Value 1 -Type DWord
+          foreach ($i in 1..12) {
+            & ./windows-bin/test_bitcoinoil.exe --run_test=wallet_tests --report_level=no --log_level=nothing --catch_system_errors=no
+            "plain run $i exit=$LASTEXITCODE"
+            Start-Sleep 3
+            if (Test-Path C:\unitlogs\postmortem.log) { "postmortem captured on run $i"; break }
+          }
+          if (Test-Path C:\unitlogs\postmortem.log) { Get-Content C:\unitlogs\postmortem.log | Select-String -Pattern 'ModLoad|NatVis|^\s*$' -NotMatch | Select-Object -First 400 }
+      - name: gdb wallet_tests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed mingw-w64-x86_64-gdb | Select-Object -Last 1
+          foreach ($i in 1..10) {
+            $out = & C:\msys64\mingw64\bin\gdb.exe -batch -ex "set pagination off" -ex run -ex "bt 60" -ex "info registers rip" -ex "x/6i `$pc-12" -ex "thread apply all bt 20" --args ./windows-bin/test_bitcoinoil.exe --run_test=wallet_tests --report_level=no --log_level=nothing --catch_system_errors=no 2>&1
+            if ($out -match 'SIGFPE|SIGSEGV') { "gdb caught on run $i"; $out | Select-String -Pattern 'New Thread|exited with|^\s*$' -NotMatch | Select-Object -Last 250; break } else { "gdb run $i clean" }
           }
       - uses: actions/upload-artifact@v7
         if: always()
