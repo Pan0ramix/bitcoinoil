@@ -1,0 +1,45 @@
+name: Debug Windows wallet upgrade
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  windows-wallet:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-bin
+          path: windows-bin
+          repository: escapeneo/bitcoinoil
+          run-id: 41448768863
+          github-token: ${{ github.token }}
+      - name: Wallet upgrade into Qt
+        shell: pwsh
+        run: |
+          python contrib/auxpow/wallet_upgrade_regtest.py --tmpdir="$env:RUNNER_TEMP/wq" --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Wallet upgrade into daemon
+        if: always()
+        shell: pwsh
+        run: |
+          python contrib/auxpow/wallet_upgrade_regtest.py --tmpdir="$env:RUNNER_TEMP/wd" --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoild.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Show logs
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse "$env:RUNNER_TEMP/wq","$env:RUNNER_TEMP/wd" -Include process.log,debug.log | ForEach-Object { "===== $($_.FullName)"; Get-Content $_ -Tail 80 }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: wallet-logs
+          path: |
+            ${{ runner.temp }}/wq
+            ${{ runner.temp }}/wd
