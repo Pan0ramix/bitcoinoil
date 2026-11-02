@@ -12,19 +12,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2]
+        attempt: [1, 2, 3]
+        source:
+          - {repo: escapeneo/bitcoinoil, run: 41448768863}
+          - {repo: Pan0ramix/bitcoinoil, run: 41513744648}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: btco/fix-qt-sendcoins-crash
       - uses: actions/download-artifact@v8
         with:
           name: windows-bin
           path: windows-bin
-          repository: Pan0ramix/bitcoinoil
-          run-id: 41513744648
+          repository: ${{ matrix.source.repo }}
+          run-id: ${{ matrix.source.run }}
           github-token: ${{ github.token }}
+      - name: Checksums
+        shell: pwsh
+        run: Get-FileHash windows-bin/*.exe | Format-Table Hash,Path -AutoSize
       - name: Assets
         continue-on-error: true
         shell: pwsh
@@ -37,13 +42,13 @@ jobs:
         shell: pwsh
         run: |
           $env:DIR_UNIT_TEST_DATA = "$env:RUNNER_TEMP/assets"
-          & ./windows-bin/test_bitcoinoil.exe --log_level=warning --report_level=short 2>&1 | Select-Object -Last 40
+          & ./windows-bin/test_bitcoinoil.exe --log_level=warning --report_level=short
           "unit exit=$LASTEXITCODE"
       - name: Qt tests
         continue-on-error: true
         shell: pwsh
         run: |
-          & ./windows-bin/test_bitcoinoil-qt.exe 2>&1 | Select-Object -Last 40
+          & ./windows-bin/test_bitcoinoil-qt.exe
           "qt exit=$LASTEXITCODE"
       - name: Wallet upgrade into Qt (default temp)
         continue-on-error: true
