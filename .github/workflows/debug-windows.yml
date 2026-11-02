@@ -6,52 +6,32 @@ permissions:
   contents: read
   actions: read
 jobs:
-  windows-dumps:
+  windows-repeat:
     runs-on: windows-2022
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3, 4]
+        attempt: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: btco/windows-crash-fixes
       - uses: actions/download-artifact@v8
         with:
           name: windows-bin
           path: windows-bin
-          repository: escapeneo/bitcoinoil
-          run-id: 41448768863
+          repository: Pan0ramix/bitcoinoil
+          run-id: 41543121575
           github-token: ${{ github.token }}
-      - name: Postmortem cdb
-        continue-on-error: true
+      - name: Repeat previously crashing tests
         shell: pwsh
         run: |
-          $cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
-          New-Item -ItemType Directory -Force C:/unitlogs | Out-Null
-          foreach ($k in 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug','HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting') { New-Item -Force $k -ErrorAction SilentlyContinue | Out-Null }
-          Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug' -Name Debugger -Value "`"$cdb`" -p %ld -e %ld -g -c `".ecxr;r;u @rip L6;k 80;~*k 40;lm;.dump /ma C:\unitlogs\crash.dmp;q`" -logo C:\unitlogs\postmortem.log"
-          Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug' -Name Auto -Value '1'
-          Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -Name Disabled -Value 1 -Type DWord
-          foreach ($i in 1..12) {
-            & ./windows-bin/test_bitcoinoil.exe --run_test=wallet_tests --report_level=no --log_level=nothing --catch_system_errors=no
-            "plain run $i exit=$LASTEXITCODE"
-            Start-Sleep 3
-            if (Test-Path C:\unitlogs\postmortem.log) { "postmortem captured on run $i"; break }
-          }
-          if (Test-Path C:\unitlogs\postmortem.log) { Get-Content C:\unitlogs\postmortem.log | Select-String -Pattern 'ModLoad|NatVis|^\s*$' -NotMatch | Select-Object -First 400 }
-      - name: gdb wallet_tests
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed mingw-w64-x86_64-gdb | Select-Object -Last 1
-          foreach ($i in 1..10) {
-            $out = & C:\msys64\mingw64\bin\gdb.exe -batch -ex "set pagination off" -ex run -ex "bt 60" -ex "info registers rip" -ex "x/6i `$pc-12" -ex "thread apply all bt 20" --args ./windows-bin/test_bitcoinoil.exe --run_test=wallet_tests --report_level=no --log_level=nothing --catch_system_errors=no 2>&1
-            if ($out -match 'SIGFPE|SIGSEGV') { "gdb caught on run $i"; $out | Select-String -Pattern 'New Thread|exited with|^\s*$' -NotMatch | Select-Object -Last 250; break } else { "gdb run $i clean" }
-          }
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: dumps-${{ matrix.attempt }}
-          path: C:/unitlogs
+          $fails = 0
+          foreach ($i in 1..15) { & ./windows-bin/test_bitcoinoil.exe --run_test=wallet_tests --report_level=no --log_level=nothing; if ($LASTEXITCODE -ne 0) { $fails++; "wallet_tests run $i exit=$LASTEXITCODE" } }
+          foreach ($i in 1..10) { & ./windows-bin/test_bitcoinoil.exe --run_test=validation_chainstatemanager_tests --report_level=no --log_level=nothing; if ($LASTEXITCODE -ne 0) { $fails++; "csm run $i exit=$LASTEXITCODE" } }
+          foreach ($i in 1..3) { python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe; if ($LASTEXITCODE -ne 0) { $fails++; "qt wallet run $i exit=$LASTEXITCODE" } }
+          foreach ($i in 1..2) { python contrib/auxpow/wallet_upgrade_regtest.py --legacy --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe; if ($LASTEXITCODE -ne 0) { $fails++; "qt legacy run $i exit=$LASTEXITCODE" } }
+          "TOTAL failures=$fails of 30"
+          if ($fails -ne 0) { exit 1 }
