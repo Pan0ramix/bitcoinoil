@@ -6,16 +6,13 @@ permissions:
   contents: read
   actions: read
 jobs:
-  windows-steps:
+  windows-dumps:
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         attempt: [1, 2, 3]
-        source:
-          - {repo: escapeneo/bitcoinoil, run: 41448768863}
-          - {repo: Pan0ramix/bitcoinoil, run: 41513744648}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -24,37 +21,45 @@ jobs:
         with:
           name: windows-bin
           path: windows-bin
-          repository: ${{ matrix.source.repo }}
-          run-id: ${{ matrix.source.run }}
+          repository: escapeneo/bitcoinoil
+          run-id: 41448768863
           github-token: ${{ github.token }}
-      - name: Checksums
+      - name: Enable crash dumps
         shell: pwsh
-        run: Get-FileHash windows-bin/*.exe | Format-Table Hash,Path -AutoSize
-      - name: Assets
+        run: |
+          New-Item -ItemType Directory -Force C:\dumps | Out-Null
+          foreach ($exe in 'bitcoinoil-qt.exe','test_bitcoinoil.exe','bitcoinoild.exe') {
+            $k = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\$exe"
+            New-Item -Force $k | Out-Null
+            New-ItemProperty -Force $k -Name DumpFolder -PropertyType ExpandString -Value C:\dumps | Out-Null
+            New-ItemProperty -Force $k -Name DumpType -PropertyType DWord -Value 1 | Out-Null
+          }
+      - name: Unit tests x3
         continue-on-error: true
         shell: pwsh
         run: |
           python contrib/auxpow/fetch_test_assets.py "$env:RUNNER_TEMP/assets"
-          "fetch exit=$LASTEXITCODE"
-          Get-ChildItem "$env:RUNNER_TEMP/assets"
-      - name: Unit tests
-        continue-on-error: true
-        shell: pwsh
-        run: |
           $env:DIR_UNIT_TEST_DATA = "$env:RUNNER_TEMP/assets"
-          & ./windows-bin/test_bitcoinoil.exe --log_level=warning --report_level=short
-          "unit exit=$LASTEXITCODE"
-      - name: Qt tests
+          foreach ($i in 1..3) { & ./windows-bin/test_bitcoinoil.exe --log_level=warning --report_level=short; "unit exit=$LASTEXITCODE" }
+      - name: Wallet upgrade into Qt x2
         continue-on-error: true
         shell: pwsh
         run: |
-          & ./windows-bin/test_bitcoinoil-qt.exe
-          "qt exit=$LASTEXITCODE"
-      - name: Wallet upgrade into Qt (default temp)
-        continue-on-error: true
+          foreach ($i in 1..2) { python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe; "wallet exit=$LASTEXITCODE" }
+      - name: Analyse dumps
+        if: always()
         shell: pwsh
         run: |
-          python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
-          "wallet exit=$LASTEXITCODE"
-          python contrib/auxpow/wallet_upgrade_regtest.py --legacy --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
-          "legacy exit=$LASTEXITCODE"
+          Start-Sleep 5
+          $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          "cdb: $cdb"
+          Get-ChildItem C:\dumps | Format-Table Name,Length
+          foreach ($d in Get-ChildItem C:\dumps -Filter *.dmp) {
+            "===== $($d.Name)"
+            if ($cdb) { & $cdb.FullName -z $d.FullName -c ".ecxr; r; u @rip L3; k 40; lm m bitcoinoil*; lm m test_*; q" 2>&1 | Select-String -NotMatch '^\s*$' | Select-Object -Last 90 }
+          }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dumps-${{ matrix.attempt }}
+          path: C:\dumps
