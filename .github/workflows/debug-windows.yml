@@ -34,7 +34,7 @@ jobs:
           python contrib/auxpow/activation_regtest.py --binary=windows-bin/bitcoinoild.exe --height=120
           Get-Process | Where-Object { $_.Name -like 'bitcoinoil*' } | Format-Table Id,Name,StartTime
           Get-NetTCPConnection -State Listen,TimeWait,Established -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -eq '127.0.0.1' } | Format-Table LocalPort,RemotePort,State,OwningProcess
-          python contrib/auxpow/wallet_upgrade_regtest.py --tmpdir="$env:RUNNER_TEMP/wq" --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
+          python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Wallet upgrade into daemon
         if: always()
@@ -47,6 +47,14 @@ jobs:
         shell: pwsh
         run: |
           Get-ChildItem -Recurse "$env:RUNNER_TEMP/wq","$env:RUNNER_TEMP/wd" -Include process.log,debug.log | ForEach-Object { "===== $($_.FullName)"; Get-Content $_ -Tail 80 }
+      - name: Collect default temp dirs
+        if: always()
+        shell: pwsh
+        run: |
+          "TEMP=$env:TEMP"
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/wq" | Out-Null
+          Get-ChildItem $env:TEMP -Directory -Filter 'btco-wallet-upgrade-*' | ForEach-Object { Copy-Item -Recurse $_.FullName "$env:RUNNER_TEMP/wq/" }
+          Get-ChildItem -Recurse "$env:RUNNER_TEMP/wq" -Include debug.log,process.log | ForEach-Object { "===== $($_.FullName)"; Get-Content $_ -Tail 40 }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
