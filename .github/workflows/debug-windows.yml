@@ -9,6 +9,10 @@ jobs:
   windows-wallet:
     runs-on: windows-2022
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -31,24 +35,6 @@ jobs:
         run: |
           python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/qt-gdb.cmd
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: B daemon in default temp
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoild.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: C Qt in a C-drive tmpdir without 8.3 name
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          python contrib/auxpow/wallet_upgrade_regtest.py --tmpdir=C:/btcotest/c --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: D Qt in default temp again
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Collect
         if: always()
         shell: pwsh
@@ -59,5 +45,5 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: wallet-logs
+          name: wallet-logs-${{ matrix.attempt }}
           path: ${{ runner.temp }}/w
