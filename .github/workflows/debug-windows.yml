@@ -6,44 +6,50 @@ permissions:
   contents: read
   actions: read
 jobs:
-  windows-wallet:
+  windows-steps:
     runs-on: windows-2022
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3, 4]
+        attempt: [1, 2]
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: btco/fix-qt-sendcoins-crash
       - uses: actions/download-artifact@v8
         with:
           name: windows-bin
           path: windows-bin
-          repository: escapeneo/bitcoinoil
-          run-id: 41448768863
+          repository: Pan0ramix/bitcoinoil
+          run-id: 41513744648
           github-token: ${{ github.token }}
-      - name: Install gdb
-        shell: pwsh
-        run: |
-          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed mingw-w64-x86_64-gdb | Select-Object -Last 3
-          '@"C:\msys64\mingw64\bin\gdb.exe" -batch -ex "set pagination off" -ex "handle SIGSEGV stop" -ex run -ex "bt 60" -ex "thread apply all bt 25" --args "%~dp0bitcoinoil-qt.exe" %*' | Set-Content -Encoding ascii windows-bin/qt-gdb.cmd
-      - name: A Qt in default temp under gdb
+      - name: Assets
         continue-on-error: true
         shell: pwsh
         run: |
-          python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/qt-gdb.cmd
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Collect
-        if: always()
+          python contrib/auxpow/fetch_test_assets.py "$env:RUNNER_TEMP/assets"
+          "fetch exit=$LASTEXITCODE"
+          Get-ChildItem "$env:RUNNER_TEMP/assets"
+      - name: Unit tests
+        continue-on-error: true
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/w" | Out-Null
-          Get-ChildItem $env:TEMP -Directory -Filter 'btco-wallet-upgrade-*' | ForEach-Object { Copy-Item -Recurse $_.FullName "$env:RUNNER_TEMP/w/" }
-          if (Test-Path C:/btcotest) { Copy-Item -Recurse C:/btcotest "$env:RUNNER_TEMP/w/" }
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: wallet-logs-${{ matrix.attempt }}
-          path: ${{ runner.temp }}/w
+          $env:DIR_UNIT_TEST_DATA = "$env:RUNNER_TEMP/assets"
+          & ./windows-bin/test_bitcoinoil.exe --log_level=warning --report_level=short 2>&1 | Select-Object -Last 40
+          "unit exit=$LASTEXITCODE"
+      - name: Qt tests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & ./windows-bin/test_bitcoinoil-qt.exe 2>&1 | Select-Object -Last 40
+          "qt exit=$LASTEXITCODE"
+      - name: Wallet upgrade into Qt (default temp)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
+          "wallet exit=$LASTEXITCODE"
+          python contrib/auxpow/wallet_upgrade_regtest.py --legacy --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
+          "legacy exit=$LASTEXITCODE"
