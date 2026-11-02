@@ -8,6 +8,10 @@ permissions:
 jobs:
   windows-wallet:
     runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -20,9 +24,16 @@ jobs:
           repository: escapeneo/bitcoinoil
           run-id: 41448768863
           github-token: ${{ github.token }}
-      - name: Wallet upgrade into Qt
+      - name: Wallet upgrade into Qt (after the full CI sequence)
         shell: pwsh
         run: |
+          python contrib/auxpow/fetch_test_assets.py "$env:RUNNER_TEMP/assets"
+          $env:DIR_UNIT_TEST_DATA = "$env:RUNNER_TEMP/assets"
+          & ./windows-bin/test_bitcoinoil.exe --log_level=warning
+          & ./windows-bin/test_bitcoinoil-qt.exe
+          python contrib/auxpow/activation_regtest.py --binary=windows-bin/bitcoinoild.exe --height=120
+          Get-Process | Where-Object { $_.Name -like 'bitcoinoil*' } | Format-Table Id,Name,StartTime
+          Get-NetTCPConnection -State Listen,TimeWait,Established -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -eq '127.0.0.1' } | Format-Table LocalPort,RemotePort,State,OwningProcess
           python contrib/auxpow/wallet_upgrade_regtest.py --tmpdir="$env:RUNNER_TEMP/wq" --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Wallet upgrade into daemon
@@ -39,7 +50,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: wallet-logs
+          name: wallet-logs-${{ matrix.attempt }}
           path: |
             ${{ runner.temp }}/wq
             ${{ runner.temp }}/wd
