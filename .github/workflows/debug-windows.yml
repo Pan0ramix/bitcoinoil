@@ -8,11 +8,7 @@ permissions:
 jobs:
   windows-wallet:
     runs-on: windows-2022
-    strategy:
-      fail-fast: false
-      matrix:
-        attempt: [1, 2]
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
@@ -24,41 +20,44 @@ jobs:
           repository: escapeneo/bitcoinoil
           run-id: 41448768863
           github-token: ${{ github.token }}
-      - name: Wallet upgrade into Qt (after the full CI sequence)
+      - name: Install gdb
         shell: pwsh
         run: |
-          python contrib/auxpow/fetch_test_assets.py "$env:RUNNER_TEMP/assets"
-          $env:DIR_UNIT_TEST_DATA = "$env:RUNNER_TEMP/assets"
-          & ./windows-bin/test_bitcoinoil.exe --log_level=warning
-          & ./windows-bin/test_bitcoinoil-qt.exe
-          python contrib/auxpow/activation_regtest.py --binary=windows-bin/bitcoinoild.exe --height=120
-          Get-Process | Where-Object { $_.Name -like 'bitcoinoil*' } | Format-Table Id,Name,StartTime
-          Get-NetTCPConnection -State Listen,TimeWait,Established -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -eq '127.0.0.1' } | Format-Table LocalPort,RemotePort,State,OwningProcess
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed mingw-w64-x86_64-gdb | Select-Object -Last 3
+          '@"C:\msys64\mingw64\bin\gdb.exe" -batch -ex "set pagination off" -ex "handle SIGSEGV stop" -ex run -ex "bt 60" -ex "thread apply all bt 25" --args "%~dp0bitcoinoil-qt.exe" %*' | Set-Content -Encoding ascii windows-bin/qt-gdb.cmd
+      - name: A Qt in default temp under gdb
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/qt-gdb.cmd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: B daemon in default temp
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoild.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: C Qt in a C-drive tmpdir without 8.3 name
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python contrib/auxpow/wallet_upgrade_regtest.py --tmpdir=C:/btcotest/c --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: D Qt in default temp again
+        continue-on-error: true
+        shell: pwsh
+        run: |
           python contrib/auxpow/wallet_upgrade_regtest.py --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoil-qt.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Wallet upgrade into daemon
+      - name: Collect
         if: always()
         shell: pwsh
         run: |
-          python contrib/auxpow/wallet_upgrade_regtest.py --tmpdir="$env:RUNNER_TEMP/wd" --old-binary=windows-bin/bitcoinoild-25.1.1.exe --binary=windows-bin/bitcoinoild.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Show logs
-        if: always()
-        shell: pwsh
-        run: |
-          Get-ChildItem -Recurse "$env:RUNNER_TEMP/wq","$env:RUNNER_TEMP/wd" -Include process.log,debug.log | ForEach-Object { "===== $($_.FullName)"; Get-Content $_ -Tail 80 }
-      - name: Collect default temp dirs
-        if: always()
-        shell: pwsh
-        run: |
-          "TEMP=$env:TEMP"
-          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/wq" | Out-Null
-          Get-ChildItem $env:TEMP -Directory -Filter 'btco-wallet-upgrade-*' | ForEach-Object { Copy-Item -Recurse $_.FullName "$env:RUNNER_TEMP/wq/" }
-          Get-ChildItem -Recurse "$env:RUNNER_TEMP/wq" -Include debug.log,process.log | ForEach-Object { "===== $($_.FullName)"; Get-Content $_ -Tail 40 }
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/w" | Out-Null
+          Get-ChildItem $env:TEMP -Directory -Filter 'btco-wallet-upgrade-*' | ForEach-Object { Copy-Item -Recurse $_.FullName "$env:RUNNER_TEMP/w/" }
+          if (Test-Path C:/btcotest) { Copy-Item -Recurse C:/btcotest "$env:RUNNER_TEMP/w/" }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: wallet-logs-${{ matrix.attempt }}
-          path: |
-            ${{ runner.temp }}/wq
-            ${{ runner.temp }}/wd
+          name: wallet-logs
+          path: ${{ runner.temp }}/w
