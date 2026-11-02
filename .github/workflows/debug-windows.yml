@@ -24,18 +24,21 @@ jobs:
           repository: escapeneo/bitcoinoil
           run-id: 41448768863
           github-token: ${{ github.token }}
-      - name: Isolate crashing unit test
+      - name: Repeat suspect suites
         continue-on-error: true
         shell: pwsh
         run: |
-          python contrib/auxpow/fetch_test_assets.py "$env:RUNNER_TEMP/assets"
-          $env:DIR_UNIT_TEST_DATA = "$env:RUNNER_TEMP/assets"
+          $cdb = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
           New-Item -ItemType Directory -Force C:/unitlogs | Out-Null
-          foreach ($i in 1..4) {
-            & ./windows-bin/test_bitcoinoil.exe --log_level=test_suite --log_sink=C:/unitlogs/run$i.log --report_level=no
-            $code = $LASTEXITCODE
-            "full run $i exit=$code"
-            if ($code -ne 0) { "--- last lines of run $i"; Get-Content C:/unitlogs/run$i.log -Tail 6 }
+          foreach ($suite in 'wallet_tests','validation_chainstatemanager_tests') {
+            $fails = 0
+            foreach ($i in 1..15) { & ./windows-bin/test_bitcoinoil.exe --run_test=$suite --report_level=no --log_level=nothing; if ($LASTEXITCODE -ne 0) { $fails++; "plain $suite run $i exit=$LASTEXITCODE" } }
+            "plain $suite failures=$fails/15"
+            foreach ($i in 1..15) {
+              $out = & $cdb -g -G -o -c 'sxe -c "r;u @rip L6;k 60;~*k 30;lm m test_*;q" dz; sxe -c "r;u @rip L6;k 60;lm m test_*;q" av; g' ./windows-bin/test_bitcoinoil.exe --run_test=$suite --report_level=no --log_level=nothing 2>&1
+              if ($out -match 'divide|Access violation') { "cdb $suite run $i caught:"; $out | Select-String -Pattern 'ModLoad|NatVis|^\s*$|Unknown exception' -NotMatch | Select-Object -Last 150; break }
+            }
+            "cdb $suite done"
           }
       - uses: actions/upload-artifact@v7
         if: always()
