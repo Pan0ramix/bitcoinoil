@@ -1131,3 +1131,50 @@ std::pair<int, char**> WinCmdLineArgs::get()
 }
 #endif
 } // namespace util
+
+#ifdef WIN32
+// DEBUG ONLY: print the faulting stack for divide-by-zero and access violations.
+#include <cstdio>
+namespace {
+LONG CALLBACK BtcoCrashTrace(EXCEPTION_POINTERS* info)
+{
+    const DWORD code = info->ExceptionRecord->ExceptionCode;
+    if (code != EXCEPTION_INT_DIVIDE_BY_ZERO && code != EXCEPTION_ACCESS_VIOLATION) return EXCEPTION_CONTINUE_SEARCH;
+    static char buf[16384];
+    int n = snprintf(buf, sizeof(buf), "BTCO-CRASH code=%08lx thread=%lu addr=%llx\n", code, GetCurrentThreadId(),
+                     (unsigned long long)info->ExceptionRecord->ExceptionInformation[1]);
+    CONTEXT ctx = *info->ContextRecord;
+    n += snprintf(buf + n, sizeof(buf) - n, "BTCO-REGS rax=%llx rbx=%llx rcx=%llx rdx=%llx rsi=%llx rdi=%llx r8=%llx r9=%llx\n",
+                  ctx.Rax, ctx.Rbx, ctx.Rcx, ctx.Rdx, ctx.Rsi, ctx.Rdi, ctx.R8, ctx.R9);
+    for (int i = 0; i < 48 && ctx.Rip && n < (int)sizeof(buf) - 400; ++i) {
+        HMODULE mod{nullptr};
+        char name[260] = "?";
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               reinterpret_cast<LPCSTR>(ctx.Rip), &mod)) {
+            GetModuleFileNameA(mod, name, sizeof(name));
+        }
+        n += snprintf(buf + n, sizeof(buf) - n, "BTCO-FRAME %d rva=%llx %s\n", i,
+                      (unsigned long long)(ctx.Rip - reinterpret_cast<DWORD64>(mod)), name);
+        DWORD64 image_base{0};
+        PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(ctx.Rip, &image_base, nullptr);
+        if (!fn) {
+            ctx.Rip = *reinterpret_cast<DWORD64*>(ctx.Rsp);
+            ctx.Rsp += 8;
+            continue;
+        }
+        void* handler_data{nullptr};
+        DWORD64 establisher{0};
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER, image_base, ctx.Rip, fn, &ctx, &handler_data, &establisher, nullptr);
+    }
+    fputs(buf, stderr);
+    fflush(stderr);
+    if (const char* path = getenv("BTCO_CRASH_LOG")) {
+        if (FILE* f = fopen(path, "a")) { fputs(buf, f); fclose(f); }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+struct BtcoCrashTraceInstaller {
+    BtcoCrashTraceInstaller() { AddVectoredExceptionHandler(1, BtcoCrashTrace); }
+} g_btco_crash_trace;
+} // namespace
+#endif
