@@ -36,6 +36,12 @@ jobs:
         run: |
           git status --porcelain --ignored=no
           ./contrib/guix/guix-build
+      - name: Guix build logs on failure
+        if: failure()
+        run: |
+          for f in $(sudo find /var/log/guix/drvs -name '*.gz' -mmin -360 2>/dev/null | head -50); do
+            if sudo zcat "$f" | tail -5 | grep -qiE 'error|fail'; then echo "===== $f"; sudo zcat "$f" | tail -60; fi
+          done
       - name: Hashes
         if: always()
         run: |
