@@ -33,6 +33,7 @@ jobs:
         env:
           HOSTS: ${{ matrix.host }}
           JOBS: 4
+          SUBSTITUTE_URLS: https://bordeaux.guix.gnu.org https://ci.guix.gnu.org
         run: |
           git status --porcelain --ignored=no
           ./contrib/guix/guix-build
