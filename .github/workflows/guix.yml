@@ -36,7 +36,20 @@ jobs:
           SUBSTITUTE_URLS: https://bordeaux.guix.gnu.org https://ci.guix.gnu.org
         run: |
           git status --porcelain --ignored=no
-          ./contrib/guix/guix-build
+          # The Ubuntu guix substitute client drops long TLS sessions
+          # ("Error in the push function"). Downloaded store items are kept,
+          # so a retry resumes where it stopped.
+          for try in 1 2 3 4 5; do
+            set +e
+            ./contrib/guix/guix-build 2>&1 | tee build.log
+            rc=${PIPESTATUS[0]}
+            set -e
+            [ "$rc" -eq 0 ] && exit 0
+            grep -q "guix substitute' died unexpectedly" build.log || exit "$rc"
+            echo "::warning::Substitute download failed (try $try), retrying"
+            rm -rf guix-build-*/distsrc-* guix-build-*/output
+          done
+          exit 1
       - name: Guix build logs on failure
         if: failure()
         run: |
