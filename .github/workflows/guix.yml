@@ -33,7 +33,11 @@ jobs:
         env:
           HOSTS: ${{ matrix.host }}
           JOBS: 4
-        run: ./contrib/guix/guix-build
+        run: |
+          # The repository lost the executable bits of these scripts.
+          git config core.fileMode false
+          chmod +x contrib/guix/guix-* contrib/guix/libexec/*.sh
+          ./contrib/guix/guix-build
       - name: Hashes
         if: always()
         run: |
